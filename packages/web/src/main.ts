@@ -6,6 +6,7 @@ import { yCollab } from "y-codemirror.next";
 import { marginoteEditorTheme, marginoteHighlight } from "./theme.js";
 import { IndexeddbPersistence } from "y-indexeddb";
 import * as Y from "yjs";
+import { ATTR_SUGGEST_INSERT } from "@marginote/bridge/attribution";
 import {
   attributionExtension,
   attributionTheme,
@@ -29,6 +30,7 @@ import { closeMenu, heading, hint, menuItem, openMenu, row, segmented, slider } 
 import { answerPeer, offerPeer, type PeerHandle } from "./peer.js";
 import { configureSuggesting, isSuggesting, setSuggesting, suggestingExtension } from "./suggesting.js";
 import { onColorSchemeChange, renderPreview } from "./preview.js";
+import { sourceFlash, syncNavigation } from "./sync-nav.js";
 import { SyncProvider } from "./provider.js";
 import {
   CommentStore,
@@ -91,6 +93,9 @@ let provider: SyncProvider | null = null;
 let persistence: IndexeddbPersistence | null = null;
 let doc: Y.Doc | null = null;
 let ytext: Y.Text | null = null;
+const navigation = syncNavigation(previewEl, () =>
+  view && ytext && !document.body.classList.contains("replaying") ? { view, text: ytext } : null,
+);
 let comments: CommentStore | null = null;
 let current: string | null = null;
 let allFiles: string[] = [];
@@ -826,7 +831,7 @@ function attachRunButtons(): void {
 }
 
 async function paintPreview(): Promise<void> {
-  if (!view || !ytext) return;
+  if (!view || !ytext || document.body.classList.contains("replaying")) return;
   // Render the committed projection, so the preview always matches the file on disk
   // rather than splicing un-accepted suggestions into the prose.
   await renderPreview(previewEl, committedTextOf(ytext), {
@@ -844,6 +849,7 @@ async function paintPreview(): Promise<void> {
 }
 
 async function open(path: string): Promise<void> {
+  navigation.reset();
   view?.destroy();
   provider?.destroy();
   void persistence?.destroy();
@@ -886,6 +892,7 @@ async function open(path: string): Promise<void> {
         marginoteEditorTheme,
         marginoteHighlight,
         EditorView.lineWrapping,
+        sourceFlash,
         yCollab(ytext, nextProvider.awareness),
         suggestingExtension(),
         // The server enforces this too; the editor reflects it so a reviewer is not
@@ -896,6 +903,7 @@ async function open(path: string): Promise<void> {
         EditorView.updateListener.of((u) => {
           if (u.docChanged) void paintPreview();
           if (u.selectionSet || u.docChanged) {
+            navigation.schedule();
             const sel = u.state.selection.main;
             commentBtn.disabled = sel.empty;
           }
@@ -906,6 +914,13 @@ async function open(path: string): Promise<void> {
 
   // Exposed for automated walkthroughs and end-to-end tests; harmless in normal use.
   (window as unknown as { __marginoteView?: EditorView }).__marginoteView = view;
+
+  // Accepting an insertion changes the committed projection without changing editor text.
+  ytext.observe((event) => {
+    if (event.delta.some((change) => change.retain && change.attributes && ATTR_SUGGEST_INSERT in change.attributes)) {
+      void paintPreview();
+    }
+  });
 
   pathEl.textContent = path;
   await paintPreview();

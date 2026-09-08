@@ -203,6 +203,31 @@ function visibleRuns(text: Y.Text): VisibleRun[] {
   return runs;
 }
 
+function committedOffsetToFull(runs: VisibleRun[], offset: number): number {
+  const index = Math.max(0, offset);
+  for (const run of runs) {
+    if (index < run.committed + run.length) return run.full + index - run.committed;
+  }
+  const last = runs.at(-1);
+  return last ? last.full + last.length : 0;
+}
+
+/** Boundaries prefer the next committed character, skipping pending insertions. */
+export function committedToFull(text: Y.Text, offset: number): number {
+  return committedOffsetToFull(visibleRuns(text), offset);
+}
+
+/** Positions inside a pending insertion collapse to its committed boundary. */
+export function fullToCommitted(text: Y.Text, offset: number): number {
+  let committed = 0;
+  for (const run of visibleRuns(text)) {
+    if (offset < run.full) return committed;
+    if (offset < run.full + run.length) return run.committed + offset - run.full;
+    committed = run.committed + run.length;
+  }
+  return committed;
+}
+
 /**
  * Apply an external (on-disk) version to a document that has pending suggestions.
  *
@@ -222,15 +247,7 @@ export function applyCommittedDiff(
   const runs = visibleRuns(text);
   const total = runs.reduce((sum, run) => sum + run.length, 0);
 
-  const toFull = (index: number): number => {
-    for (const run of runs) {
-      if (index >= run.committed && index < run.committed + run.length) {
-        return run.full + (index - run.committed);
-      }
-    }
-    const last = runs[runs.length - 1];
-    return last ? last.full + last.length : 0;
-  };
+  const toFull = (index: number): number => committedOffsetToFull(runs, index);
 
   const ops: Array<{ at: number; insert?: string; deleteTo?: number }> = [];
   let cursor = 0;

@@ -297,6 +297,16 @@ main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-
   line-height: var(--prose-leading, 1.72);
 }
 #preview > * { max-width: var(--prose-measure, 62ch); }
+.sync-nav-flash {
+  animation: sync-nav-flash 1.2s ease-out;
+}
+@keyframes sync-nav-flash {
+  from { background-color: color-mix(in srgb, var(--accent) 18%, transparent); }
+  to { background-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sync-nav-flash { animation: none; background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
+}
 #preview :first-child { margin-top: 0; }
 #preview h1, #preview h2, #preview h3, #preview h4 {
   font-family: var(--font-ui);

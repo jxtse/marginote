@@ -1,4 +1,4 @@
-import { marked } from "marked";
+import { previewBlocks } from "./preview-blocks.js";
 import type { Mermaid } from "mermaid";
 
 /**
@@ -13,6 +13,7 @@ const loadMermaid = (): Promise<Mermaid> => {
 
 const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 let mermaidTheme: "dark" | "default" | null = null;
+const renderVersions = new WeakMap<HTMLElement, number>();
 
 /**
  * Mermaid bakes its palette in at initialize() time, so a diagram rendered before the
@@ -57,8 +58,28 @@ export async function renderPreview(
   source: string,
   options: { resolveLink: (t: string) => string | null; onNavigate: (path: string) => void },
 ): Promise<void> {
-  const html = marked.parse(linkifyWikiLinks(source, options.resolveLink), { async: false });
-  target.innerHTML = html;
+  const version = (renderVersions.get(target) ?? 0) + 1;
+  renderVersions.set(target, version);
+  const fragment = document.createDocumentFragment();
+  for (const block of previewBlocks(source, (raw) => linkifyWikiLinks(raw, options.resolveLink))) {
+    const template = document.createElement("template");
+    template.innerHTML = block.html;
+    for (const node of [...template.content.childNodes]) {
+      let element: Element;
+      if (node instanceof Element) element = node;
+      else if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+        element = document.createElement("span");
+        element.append(node);
+      } else {
+        fragment.append(node);
+        continue;
+      }
+      element.setAttribute("data-src-start", String(block.start));
+      element.setAttribute("data-src-end", String(block.end));
+      fragment.append(element);
+    }
+  }
+  target.replaceChildren(fragment);
 
   for (const anchor of target.querySelectorAll<HTMLAnchorElement>("a.wikilink")) {
     anchor.onclick = (event) => {
@@ -72,20 +93,27 @@ export async function renderPreview(
   if (blocks.length === 0) return;
 
   const mermaid = await initMermaid();
+  if (renderVersions.get(target) !== version) return;
   await Promise.all(
     blocks.map(async (block, index) => {
       const container = block.parentElement;
       if (!container) return;
       try {
-        const { svg } = await mermaid.render(`mmd-${Date.now()}-${index}`, block.textContent ?? "");
+        const { svg } = await mermaid.render(`mmd-${Date.now()}-${version}-${index}`, block.textContent ?? "");
+        if (renderVersions.get(target) !== version) return;
         const figure = document.createElement("figure");
         figure.className = "mermaid-figure";
+        figure.dataset.srcStart = container.dataset.srcStart;
+        figure.dataset.srcEnd = container.dataset.srcEnd;
         figure.innerHTML = svg;
         container.replaceWith(figure);
       } catch (error) {
+        if (renderVersions.get(target) !== version) return;
         // A broken diagram should show its error, not blank the whole preview.
         const pre = document.createElement("pre");
         pre.className = "mermaid-error";
+        pre.dataset.srcStart = container.dataset.srcStart;
+        pre.dataset.srcEnd = container.dataset.srcEnd;
         pre.textContent = `Mermaid error: ${(error as Error).message}`;
         container.replaceWith(pre);
       }
