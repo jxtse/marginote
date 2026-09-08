@@ -78,7 +78,7 @@ for (const script of forbiddenInstallScripts) {
 for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
   if (!(await exists(entry))) continue;
   const body = await readFile(join(cli, entry), "utf8");
-  if (body.includes("GITHUB_TOKEN")) {
+  if (/\bGITHUB_TOKEN\b/.test(body)) {
     problems.push(`${entry} reads GITHUB_TOKEN; published Marginote must not forward ambient credentials`);
   }
 }

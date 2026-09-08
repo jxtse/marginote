@@ -45,6 +45,28 @@ Not ready to point it at your own files? Start a sample vault that is deleted wh
 npx marginote --demo
 ```
 
+## Built-in comment collaborator
+
+Open **Agent** in the top bar to configure an OpenAI-compatible Base URL, API key,
+model id and display name. **Save & test connection** sends a real one-token completion
+and displays any provider error. Keys are stored locally in `<vault>/.marginote/agent.json`
+with owner-only file permissions; this directory is never indexed as documents. Settings
+are only available from loopback. Core editing still works without an API key.
+
+New human comments receive a short reading receipt, followed by an answer or an attributed
+suggestion. Human follow-ups continue the conversation. The agent handles one thread at a
+time per document and stops each run after three minutes. It cannot use a shell or edit
+files directly: suggestions obey the document's locks and agent budgets and remain off disk
+until accepted. A reply added while it is working is queued for the next turn.
+
+Search uses DuckDuckGo without a key; optionally select Tavily or Exa and supply a search key.
+Auto mode uses Tavily when a key is present. Page reads block private network destinations.
+Images are limited to 5 MB and must be inside the vault or explicitly linked in vault
+Markdown (outside-image symlinks are refused). Once configured, document context and selected
+images are sent to your model provider; web queries are sent to the selected search provider.
+In-memory conversations are bounded and are not restored after a server restart; thread
+history remains in the document's collaboration state when persistence is enabled.
+
 ## Where it sits
 
 Plenty of tools do two of these. Marginote is the one that does all three.

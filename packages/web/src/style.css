@@ -10,6 +10,20 @@
  * carries, and because both variants are already contrast-tested as a pair.
  */
 
+.popover.agent-settings { width: min(380px, calc(100vw - 24px)); max-height: calc(100vh - 90px); overflow-y: auto; }
+.agent-settings form { display: grid; gap: 12px; }
+.agent-settings label { display: grid; gap: 5px; color: var(--subtle); font-size: 12px; }
+.agent-settings input:not([type="checkbox"]), .agent-settings select {
+  width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--rule);
+  border-radius: var(--r-sm); background: var(--base); color: var(--text); font: inherit;
+}
+.agent-settings input:focus-visible, .agent-settings select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.agent-settings .agent-clear-keys { display: flex; align-items: center; }
+.agent-settings-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.agent-settings-actions button { padding: 8px 10px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--overlay); color: var(--text); cursor: pointer; }
+.agent-settings-actions button:disabled { opacity: .5; cursor: wait; }
+.agent-settings-status { color: var(--subtle); font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+
 :root {
   /*
    * Pre-hydration defaults only. themes.ts overwrites these twelve roles the moment the

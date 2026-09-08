@@ -39,6 +39,7 @@ import { isRequestAllowed, isSafeDocPath } from "./security.js";
 import { ShareRegistry, type ShareRole } from "./sharing.js";
 import { searchDocuments, searchVault } from "./search.js";
 import { Room } from "./room.js";
+import { EmbeddedAgent, maskedConfig, testConnection } from "@marginote/agent";
 
 export interface MarginoteServerOptions extends VaultOptions {
   port?: number;
@@ -74,6 +75,7 @@ const MIME: Record<string, string> = {
 };
 
 export class MarginoteServer {
+  readonly agent: EmbeddedAgent;
   /** Capability links. In memory only, so they never outlive the session that made them. */
   readonly shares = new ShareRegistry();
 
@@ -98,6 +100,7 @@ export class MarginoteServer {
     readonly vault: Vault,
     private readonly opts: MarginoteServerOptions,
   ) {
+    this.agent = new EmbeddedAgent(vault);
     this.git = opts.git ? new GitSnapshotter(vault, opts.git) : null;
 
     // Files created by an agent, by the registry, or by another tool used to require a
@@ -119,7 +122,8 @@ export class MarginoteServer {
   private startRoomSweep(): void {
     this.roomSweep = setInterval(() => {
       for (const [path, room] of this.rooms) {
-        if (room.size === 0) {
+        if (room.size === 0 && !this.agent.busy(room)) {
+          this.agent.detach(room);
           room.destroy();
           this.rooms.delete(path);
         }
@@ -142,6 +146,8 @@ export class MarginoteServer {
   static async start(options: MarginoteServerOptions): Promise<MarginoteServer> {
     const vault = await Vault.open(options);
     const server = new MarginoteServer(vault, options);
+    try { await server.agent.config.load(); }
+    catch (error) { server.agent.lastError = "Unable to load agent configuration"; console.error("[marginote agent] config", error); }
     await server.listen();
     server.gitReady = Boolean(server.git && (await server.git.isRepo()));
     if (server.gitReady) server.git?.start();
@@ -164,6 +170,7 @@ export class MarginoteServer {
     if (!room) {
       room = new Room(this.vault.getDoc(path), this.epoch);
       this.rooms.set(path, room);
+      this.agent.attach(room);
     }
     return room;
   }
@@ -226,6 +233,25 @@ export class MarginoteServer {
       res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(body));
     };
+
+    if (url.pathname.startsWith("/api/agent/")) {
+      const address = req.socket.remoteAddress;
+      if (!address || !["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address) || !isRequestAllowed(req)) {
+        json({ error: "Agent settings are loopback-only" }, 403);
+        return;
+      }
+      res.setHeader("Cache-Control", "no-store");
+      try {
+        if (url.pathname === "/api/agent/config" && req.method === "GET") json(maskedConfig(this.agent.config.current));
+        else if (url.pathname === "/api/agent/config" && req.method === "POST") json(await this.agent.config.save(JSON.parse(await readBody(req, 32768))));
+        else if (url.pathname === "/api/agent/status" && req.method === "GET") json(this.agent.status);
+        else if (url.pathname === "/api/agent/test" && req.method === "POST") {
+          try { await testConnection(this.agent.config.current); json({ ok: true }); }
+          catch (error) { json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 502); }
+        } else json({ error: "Unknown agent endpoint or method" }, 405);
+      } catch (error) { json({ error: error instanceof Error ? error.message : String(error) }, 400); }
+      return;
+    }
 
     if (url.pathname === "/api/files") {
       json({
@@ -655,6 +681,7 @@ export class MarginoteServer {
   }
 
   async close(): Promise<void> {
+    this.agent.close();
     if (this.roomSweep) clearInterval(this.roomSweep);
     this.roomSweep = null;
     for (const stream of this.eventStreams) stream.end();

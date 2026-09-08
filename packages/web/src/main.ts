@@ -27,6 +27,7 @@ import {
 } from "./export.js";
 import { applyLayout, getLayout, loadLayout, togglePanel, wireResizer } from "./layout.js";
 import { closeMenu, heading, hint, menuItem, openMenu, row, segmented, slider } from "./menus.js";
+import { wireAgentSettings } from "./agent-settings.js";
 import { answerPeer, offerPeer, type PeerHandle } from "./peer.js";
 import { configureSuggesting, isSuggesting, setSuggesting, suggestingExtension } from "./suggesting.js";
 import { onColorSchemeChange, renderPreview } from "./preview.js";
@@ -75,6 +76,7 @@ const suggestBtn = $<HTMLButtonElement>("#suggest-btn");
 const shareBtn = $<HTMLButtonElement>("#share-btn");
 const exportBtn = $<HTMLButtonElement>("#export-btn");
 const displayBtn = $<HTMLButtonElement>("#display-btn");
+wireAgentSettings($<HTMLButtonElement>("#agent-settings-btn"));
 const insightBtn = $<HTMLButtonElement>("#insight-btn");
 const replayBar = $("#replay-bar");
 const replayRange = $<HTMLInputElement>("#replay-range");
