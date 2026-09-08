@@ -27,7 +27,7 @@ import {
 } from "./export.js";
 import { applyLayout, getLayout, loadLayout, togglePanel, wireResizer } from "./layout.js";
 import { closeMenu, heading, hint, menuItem, openMenu, row, segmented, slider } from "./menus.js";
-import { wireAgentSettings } from "./agent-settings.js";
+import { agentRequest, wireAgentSettings } from "./agent-settings.js";
 import { answerPeer, offerPeer, type PeerHandle } from "./peer.js";
 import { configureSuggesting, isSuggesting, setSuggesting, suggestingExtension } from "./suggesting.js";
 import { onColorSchemeChange, renderPreview } from "./preview.js";
@@ -100,6 +100,38 @@ const navigation = syncNavigation(previewEl, () =>
 );
 let comments: CommentStore | null = null;
 let current: string | null = null;
+const grillBtn = $<HTMLButtonElement>("#grill-btn");
+const onboarding = $("#agent-onboarding");
+let onboardingDismissed = false;
+try { onboardingDismissed = localStorage.getItem("marginote-agent-onboarding-dismissed") === "true"; } catch {}
+$("#agent-onboarding-settings").onclick = () => $("#agent-settings-btn").click();
+$("#agent-onboarding-dismiss").onclick = () => {
+  onboardingDismissed = true; onboarding.hidden = true;
+  try { localStorage.setItem("marginote-agent-onboarding-dismissed", "true"); } catch {}
+};
+let submittingGrill = false;
+async function refreshAgentStatus(): Promise<void> {
+  const path = current;
+  try {
+    const status = await agentRequest(`status${path ? `?doc=${encodeURIComponent(path)}` : ""}`) as { configured: boolean; busy?: boolean; lastError: string | null };
+    if (path !== current) return;
+    onboarding.hidden = status.configured || onboardingDismissed;
+    grillBtn.disabled = !status.configured || !path || Boolean(status.busy) || submittingGrill;
+    grillBtn.textContent = status.busy || submittingGrill ? "Working…" : "Grill me";
+    grillBtn.setAttribute("aria-busy", String(Boolean(status.busy) || submittingGrill));
+    grillBtn.title = !status.configured ? "Add an API key and model in Settings to Grill me" : status.lastError ? `Last agent error: ${status.lastError}` : status.busy ? "The agent is working on this document" : "Review this draft with anchored findings";
+  } catch { grillBtn.disabled = true; grillBtn.title = "Agent status unavailable"; }
+}
+grillBtn.onclick = async () => {
+  if (!current || submittingGrill) return;
+  submittingGrill = true; grillBtn.disabled = true;
+  try { await agentRequest("grill", { doc: current }); }
+  catch (error) { toast(error instanceof Error ? error.message : String(error), true); }
+  finally { submittingGrill = false; void refreshAgentStatus(); }
+};
+window.addEventListener("agent-config-changed", () => void refreshAgentStatus());
+setInterval(() => void refreshAgentStatus(), 2000);
+void refreshAgentStatus();
 let allFiles: string[] = [];
 let links: { backlinks: Record<string, string[]> } = { backlinks: {} };
 /** Server lineage. Local offline state is scoped to it -- see openPersistence. */
@@ -858,6 +890,8 @@ async function open(path: string): Promise<void> {
   doc?.destroy();
 
   current = path;
+  grillBtn.disabled = true;
+  void refreshAgentStatus();
   doc = new Y.Doc();
   ytext = doc.getText("content");
   comments = new CommentStore(doc);

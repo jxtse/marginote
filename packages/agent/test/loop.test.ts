@@ -34,6 +34,68 @@ async function configure(factory: ConstructorParameters<typeof EmbeddedAgent>[1]
 }
 
 describe("comment lifecycle", () => {
+  it("queues grills behind comments and continues human replies on generated threads", async () => {
+    const resolvers: Array<() => void> = [];
+    const prompts: string[] = [];
+    const factory = vi.fn(async (_config, _vault, _path, tools: ToolDefinition[]) => {
+      const session = fake();
+      session.prompt.mockImplementation(async text => {
+        prompts.push(text);
+        await new Promise<void>(resolve => resolvers.push(resolve));
+        const create = tools.find(tool => tool.name === "create_comment");
+        if (create) await create.execute("finding", { quote: "paragraph", body: "Support this claim with evidence." }, undefined, undefined, {} as never);
+      });
+      return session as unknown as AgentSession;
+    });
+    await configure(factory);
+    add(); await vi.advanceTimersByTimeAsync(400);
+    expect(agent.grill(room)).toMatch(/^grill-/);
+    expect(() => agent.grill(room)).toThrow(/already/);
+    expect(factory).toHaveBeenCalledTimes(1);
+    resolvers.shift()!(); await vi.advanceTimersByTimeAsync(0);
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(prompts[1]).toContain("claim tree");
+    resolvers.shift()!(); await vi.advanceTimersByTimeAsync(0);
+    expect(agent.status.state).toBe("idle");
+    const finding = comments.list().find(thread => thread.body === "Support this claim with evidence.")!;
+    expect(finding.authorId).toBe(AGENT_ID);
+    comments.reply(finding.id, "I disagree", "human", "Human");
+    await vi.advanceTimersByTimeAsync(400);
+    expect(factory).toHaveBeenCalledTimes(3);
+    expect(prompts[2]).toContain("I disagree");
+    expect(factory.mock.calls[2]![3].map(tool => tool.name)).not.toContain("create_comment");
+    resolvers.shift()!(); await vi.advanceTimersByTimeAsync(0);
+  });
+  it("refuses unconfigured and empty grills", async () => {
+    agent = new EmbeddedAgent(vault);
+    expect(() => agent.grill(room)).toThrow(/Configure/);
+    await agent.config.save({ apiKey: "fake", model: "fake" });
+    room.handle.text.delete(0, room.handle.text.length);
+    expect(() => agent.grill(room)).toThrow(/nonempty/);
+  });
+  it("times out a grill, disables its late tools, and runs the queued comment", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let grillTools: ToolDefinition[] = [];
+    const stuck = fake(); stuck.prompt.mockImplementation(() => new Promise(() => {}));
+    const factory = vi.fn(async (_config, _vault, _path, tools: ToolDefinition[]) => {
+      if (tools.some(tool => tool.name === "create_comment")) {
+        grillTools = tools;
+        return stuck as unknown as AgentSession;
+      }
+      return fake() as unknown as AgentSession;
+    });
+    await configure(factory, 1000);
+    agent.grill(room);
+    add("Queued during grill"); await vi.advanceTimersByTimeAsync(400);
+    expect(factory).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(stuck.abort).toHaveBeenCalled();
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(agent.status.state).toBe("idle");
+    expect(comments.list()[0]!.replies.at(-1)!.body).toBe("Here is my answer.");
+    const create = grillTools.find(tool => tool.name === "create_comment")!;
+    await expect(create.execute("late", { quote: "paragraph", body: "Late" }, undefined, undefined, {} as never)).rejects.toThrow();
+  });
   it("triggers only eligible human comments and human replies to agent conversations", () => {
     const id = add(); const thread = comments.list()[0]!;
     const isAgent = (author: string) => author === AGENT_ID;

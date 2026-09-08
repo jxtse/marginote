@@ -1,5 +1,13 @@
 # Changelog
 
+## Marginote — Unreleased
+
+- Added the embedded comment agent and source↔preview navigation layer.
+- Added Grill me: queued draft reviews with up to eight anchored findings and one summary.
+- Default CLI launch opens ~/Documents/Marginote, seeded once on folder creation.
+- Added dismissible API-key onboarding and Settings access in the editor toolbar.
+- Retained the upstream Quire release history below unchanged.
+
 ## 0.1.0-beta.3 - 2026-08-30
 
 ### Positioning and Markdown fidelity

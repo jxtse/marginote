@@ -1,9 +1,9 @@
 import { AgentBudget, CommentStore, knownAuthors, readPolicy, registerAuthor, type CommentThread, type DocHandle, type Vault } from "@marginote/bridge";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ConfigStore } from "./config.js";
-import { newSession, threadPrompt } from "./session.js";
-import { createTools, type ToolContext } from "./tools.js";
+import { grillPrompt, newSession, threadPrompt } from "./session.js";
+import { createComment, createTools, summaryQuote, type ToolContext } from "./tools.js";
 
 export const AGENT_ID = "agent-marginote-embedded";
 const authorId = (name: string) => name === "Margin" ? AGENT_ID : `${AGENT_ID}-${createHash("sha256").update(name).digest("hex").slice(0, 16)}`;
@@ -33,6 +33,12 @@ export class EmbeddedAgent {
   attach(room: AgentRoom): void { if (!this.loops.has(room)) this.loops.set(room, new DocumentLoop(this, room)); }
   detach(room: AgentRoom): void { this.loops.get(room)?.dispose(); this.loops.delete(room); }
   busy(room: AgentRoom): boolean { return this.loops.get(room)?.busy ?? false; }
+  grill(room: AgentRoom): string {
+    if (!this.status.configured) throw new Error("Configure an API key and model in Settings first");
+    if (room.handle.deleted || !room.handle.getContent().trim()) throw new Error("Choose a nonempty document to grill");
+    this.attach(room);
+    return this.loops.get(room)!.grill();
+  }
   close(): void { for (const loop of this.loops.values()) loop.dispose(); this.loops.clear(); }
   begin(): void { this.working++; this.lastError = null; }
   end(): void { this.working--; }
@@ -49,12 +55,21 @@ class DocumentLoop {
   private previous = new Map<string, CommentThread>();
   private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly queue: string[] = [];
+  private readonly grills = new Set<string>();
   private readonly sessions = new Map<string, { session: AgentSession; context: ToolContext; config: string }>();
   private active: string | null = null;
   private controller: AbortController | null = null;
   private disposed = false;
   private readonly budget: AgentBudget;
   get busy(): boolean { return this.active !== null || this.queue.length > 0 || this.pending.size > 0; }
+  grill(): string {
+    if (this.grills.size) throw new Error("A grill is already queued or working for this document");
+    const id = `grill-${randomUUID()}`;
+    this.grills.add(id);
+    this.queue.push(id);
+    void this.drain();
+    return id;
+  }
   constructor(private readonly agent: EmbeddedAgent, private readonly room: AgentRoom) {
     this.store = new CommentStore(room.handle.doc);
     this.previous = new Map(this.store.list().map(thread => [thread.id, thread]));
@@ -87,16 +102,17 @@ class DocumentLoop {
     this.active = id;
     try { await this.run(id); }
     catch (error) { console.error("[marginote agent] lifecycle failure", error); }
-    finally { this.active = null; void this.drain(); }
+    finally { this.grills.delete(id); this.active = null; void this.drain(); }
   }
   private async run(id: string): Promise<void> {
     const thread = this.store.list().find(entry => entry.id === id);
-    if (!thread || thread.resolved || thread.orphaned || this.room.handle.deleted) return;
+    const grill = this.grills.has(id);
+    if ((!grill && (!thread || thread.resolved || thread.orphaned)) || this.room.handle.deleted) return;
     const config = this.agent.config.current;
     const author = { id: authorId(config.agentName), name: config.agentName, color: "var(--agent)", kind: "agent" as const };
     registerAuthor(this.room.handle.doc, author);
-    if (!config.apiKey || !config.model) { this.agent.introduce(this.store, id); return; }
-    this.store.reply(id, "👀 reading…", author.id, author.name);
+    if (!config.apiKey || !config.model) { if (!grill) this.agent.introduce(this.store, id); return; }
+    if (!grill) this.store.reply(id, "👀 reading…", author.id, author.name);
     this.room.setAgentPresence(author.name);
     this.agent.begin();
     const controller = new AbortController();
@@ -108,6 +124,7 @@ class DocumentLoop {
     const context: ToolContext = entry?.context ?? {
       vault: this.agent.vault, handle: this.room.handle, author, budget: this.budget, config, threadId: id,
       active: true, signal: controller.signal, snapshot: this.room.handle.getContent(), suggestions: [], replies: [], humanCursors: () => this.room.humanCursors(),
+      ...(grill ? { grill: { findings: 0, summary: false } } : {}),
     };
     Object.assign(context, { active: true, signal: controller.signal, snapshot: this.room.handle.getContent(), suggestions: [], replies: [] });
     try {
@@ -122,13 +139,15 @@ class DocumentLoop {
             if (oldest !== id) { this.sessions.get(oldest)?.session.dispose(); this.sessions.delete(oldest); }
           }
         }
-        await entry.session.prompt(threadPrompt(context.snapshot, thread));
+        await entry.session.prompt(grill ? grillPrompt(context.snapshot) : threadPrompt(context.snapshot, thread!));
       };
       await Promise.race([work(), new Promise<never>((_, reject) => controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true }))]);
       const last = entry?.session.messages.filter(message => message.role === "assistant").at(-1);
       if (last?.role === "assistant" && (last.stopReason === "error" || last.stopReason === "aborted")) throw new Error(last.errorMessage ?? last.stopReason);
       const answer = last?.role === "assistant" ? last.content.filter(part => part.type === "text").map(part => part.text).join("\n").trim() : "";
-      if (context.suggestions.length) this.store.reply(id, `Suggested an edit: ${context.suggestions.join("; ")}${answer ? `\n\n${answer}` : ""}`.slice(0, 16000), author.id, author.name);
+      if (grill) {
+        if (!context.grill!.summary) createComment(context, summaryQuote(this.room.handle.getContent()), answer || "The review ended without a summary. Please try Grill me again.");
+      } else if (context.suggestions.length) this.store.reply(id, `Suggested an edit: ${context.suggestions.join("; ")}${answer ? `\n\n${answer}` : ""}`.slice(0, 16000), author.id, author.name);
       else if (answer && !context.replies.includes(answer)) this.store.reply(id, answer.slice(0, 16000), author.id, author.name);
       else if (!context.replies.length) this.store.reply(id, "I couldn't produce an answer. Please try again.", author.id, author.name);
     } catch (error) {
@@ -137,11 +156,12 @@ class DocumentLoop {
       console.error(`[marginote agent] ${this.room.handle.path} ${id}`, error);
       const errorClass = controller.signal.aborted ? "timeout or cancellation" : /\b(401|403|429|5\d\d)\b/.exec(detail)?.[0] ? `${/\b(401|403|429|5\d\d)\b/.exec(detail)![0]} from provider` : "provider or agent error";
       this.agent.lastError = errorClass;
-      if (!this.disposed) this.store.reply(id, `Sorry, I hit an error (${errorClass}). Check Settings → Agent.`, author.id, author.name);
-      if (entry) { void entry.session.abort().catch(() => {}); entry.session.dispose(); this.sessions.delete(id); }
+      if (!this.disposed && !grill) this.store.reply(id, `Sorry, I hit an error (${errorClass}). Check Settings → Agent.`, author.id, author.name);
+      if (entry) { void entry.session.abort().catch(() => {}); entry.session.dispose(); this.sessions.delete(id); entry = undefined; }
     } finally {
       context.active = false;
       clearTimeout(timeout);
+      if (grill && entry) { entry.session.dispose(); this.sessions.delete(id); }
       controller.abort();
       this.controller = null;
       if (!this.disposed) this.room.setAgentPresence(null);

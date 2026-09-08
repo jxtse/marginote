@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MarginoteServer } from "../src/server.js";
 
 let root: string;
@@ -15,6 +15,19 @@ afterEach(async () => { await server?.close(); await rm(root, { recursive: true,
 const request = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${server.port}/api/agent/${path}`, init);
 
 describe("agent routes", () => {
+  it("validates grill requests and enqueues the current document", async () => {
+    const post = (body: unknown) => request("grill", { method: "POST", body: JSON.stringify(body) });
+    expect((await post({ doc: "doc.md" })).status).toBe(409);
+    for (const doc of ["missing.md", "../doc.md", null]) expect((await post({ doc })).status).toBe(404);
+    await server.agent.config.save({ apiKey: "fake", model: "fake" });
+    const grill = vi.spyOn(server.agent, "grill").mockReturnValue("grill-test");
+    const response = await post({ doc: "doc.md" });
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ enqueued: true, runId: "grill-test" });
+    expect(grill.mock.calls[0]![0].handle.path).toBe("doc.md");
+    expect(await (await request("status?doc=doc.md")).json()).toMatchObject({ busy: false });
+    grill.mockRestore();
+  });
   it("roundtrips config, masks keys, reports status and excludes metadata from documents", async () => {
     const response = await request("config", { method: "POST", body: JSON.stringify({ apiKey: "sk-private-12345", model: "model", webSearch: { apiKey: "search-secret" } }) });
     expect(response.status).toBe(200);

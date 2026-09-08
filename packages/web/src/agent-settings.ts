@@ -5,7 +5,7 @@ interface Settings {
   webSearch: { provider: string; apiKey: string | null };
 }
 
-async function request(path: string, body?: unknown): Promise<unknown> {
+export async function agentRequest(path: string, body?: unknown): Promise<unknown> {
   const response = await fetch(`/api/agent/${path}`, body === undefined ? {} : {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   });
@@ -23,7 +23,7 @@ export function wireAgentSettings(button: HTMLButtonElement): void {
     status.setAttribute("role", "status");
     status.textContent = "Loading…";
     panel.append(status);
-    void request("config").then(async value => {
+    void agentRequest("config").then(async value => {
       if (!panel.isConnected) return;
       const config = value as Settings;
       const form = document.createElement("form");
@@ -59,7 +59,7 @@ export function wireAgentSettings(button: HTMLButtonElement): void {
         try {
           const apiKey = fields.get("apiKey")!.value;
           const searchKey = fields.get("searchKey")!.value;
-          const saved = await request("config", {
+          const saved = await agentRequest("config", {
             baseUrl: fields.get("baseUrl")!.value, model: fields.get("model")!.value, agentName: fields.get("agentName")!.value,
             ...(clear.checked ? { apiKey: "" } : apiKey ? { apiKey } : {}),
             webSearch: { provider: provider.value, ...(clear.checked ? { apiKey: null } : searchKey ? { apiKey: searchKey } : {}) },
@@ -67,14 +67,15 @@ export function wireAgentSettings(button: HTMLButtonElement): void {
           fields.get("apiKey")!.value = ""; fields.get("searchKey")!.value = ""; clear.checked = false;
           fields.get("apiKey")!.placeholder = saved.apiKey ? "Saved — leave blank to keep" : "Not configured";
           fields.get("searchKey")!.placeholder = saved.webSearch.apiKey ? "Saved — leave blank to keep" : "Not configured";
-          if (check) await request("test", {});
+          window.dispatchEvent(new Event("agent-config-changed"));
+          if (check) await agentRequest("test", {});
           status.textContent = check ? "Connection successful." : "Saved. New comments will use these settings.";
         } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
         finally { save.disabled = test.disabled = false; }
       };
       form.onsubmit = event => { event.preventDefault(); void submit(false); };
       test.onclick = () => void submit(true);
-      const state = await request("status") as { configured: boolean; state: string; lastError: string | null };
+      const state = await agentRequest("status") as { configured: boolean; state: string; lastError: string | null };
       status.textContent = `${state.configured ? state.state : "Not configured"}${state.lastError ? ` — ${state.lastError}` : ""}`;
     }).catch(error => { status.textContent = error instanceof Error ? error.message : String(error); });
   });

@@ -930,6 +930,15 @@ body.commenting #editor { opacity: 0.92; }
 
 /* ── theme picker ────────────────────────────────────────────────────── */
 
+#agent-onboarding:not([hidden]) {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 16px; border-bottom: 1px solid var(--rule);
+  background: var(--base); color: var(--subtle); font-size: 12px;
+}
+#agent-onboarding button { background: none; border: 0; color: inherit; cursor: pointer; }
+#agent-onboarding-settings:hover { text-decoration: underline; }
+#grill-btn[aria-busy="true"] { color: var(--muted); }
+
 .theme-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

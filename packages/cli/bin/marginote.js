@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MarginoteServer } from "@marginote/server";
+import { defaultVault } from "./default-vault.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(resolve(here, "../package.json"), "utf8"));
@@ -26,7 +27,9 @@ if (args.includes("--version") || args.includes("-v")) {
 
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-  marginote <directory>       Make a folder of Markdown files collaborative.
+  marginote                   Open ~/Documents/Marginote; create it with a welcome
+                              document only when the folder does not exist.
+  marginote <directory>       Use an existing folder of Markdown files instead.
   marginote --demo             Try Marginote in a disposable sample vault.
 
     -v, --version         Print the installed Marginote version
@@ -37,7 +40,7 @@ if (args.includes("--help") || args.includes("-h")) {
     --allow-host <name>   Additionally trust this hostname (repeatable). Needed only
                           when deliberately exposing the vault, e.g. via a tunnel.
     --git                 Opt in to periodic git snapshots of Markdown changed by Marginote
-    --no-discover         Disable the Discover tab (no outbound requests at all)
+    --no-discover         Disable the Discover tab (no discovery requests)
     --no-search           Keep the curated index, but disable live GitHub search
     --no-persist          Do not save collaboration state. Comments, attribution and
                           policy then last only as long as the server runs.
@@ -62,7 +65,8 @@ const flag = (name, fallback) => {
   return i === -1 ? fallback : args[i + 1];
 };
 
-const positional = args.filter((a, i) => !a.startsWith("--") && !String(args[i - 1] ?? "").startsWith("--"));
+const valueFlags = new Set(["--port", "--host", "--allow-host"]);
+const positional = args.filter((arg, index) => !arg.startsWith("-") && !valueFlags.has(args[index - 1]));
 const demo = args.includes("--demo");
 let demoRoot = null;
 if (demo) {
@@ -76,9 +80,10 @@ This vault is disposable. Explore freely: it is removed when Marginote stops.
 
 Type beside a collaborator, select text to leave a comment, or switch on suggesting mode.
 
-## Bring an agent
+## Wake the margin agent
 
-Run the MCP command shown in the README, then ask the agent to improve this document.
+Open Settings to add your provider's API key and model. Select text and leave a comment
+to hear back from the agent, or click Grill me for a draft review with recommended fixes.
 `, "utf8"),
     writeFile(join(demoRoot, "project-plan.md"), `# Launch plan
 
@@ -103,7 +108,7 @@ The filesystem remains the source of truth.
 `, "utf8"),
   ]);
 }
-const root = demoRoot ?? resolve(positional[0] ?? process.cwd());
+const root = demoRoot ?? (positional[0] ? resolve(positional[0]) : await defaultVault());
 // The repository build comes first. Both layouts can exist at once -- `build:release`
 // stages a copy beside the binary -- and in a clone the live build is the one that
 // changes, so preferring the staged copy would serve a stale client after every release.
@@ -156,7 +161,7 @@ if (args.includes("--allow-exec")) {
   console.log(`  exec    ENABLED -- documents in this vault can run code as you`);
 }
 if (allowedHosts.length > 0) console.log(`  trusted ${allowedHosts.join(", ")}`);
-console.log(`\n  Local only. Nothing is uploaded and no account is needed.`);
+console.log(`\n  Local-first. No account needed. Configured agents send context to your provider.`);
 console.log(`  Ctrl+C to stop.\n`);
 
 let shuttingDown = false;

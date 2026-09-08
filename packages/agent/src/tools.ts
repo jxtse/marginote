@@ -22,6 +22,7 @@ export interface ToolContext {
   snapshot: string;
   suggestions: string[];
   replies: string[];
+  grill?: { findings: number; summary: boolean };
   humanCursors: () => Array<{ name: string; index: number }>;
 }
 
@@ -30,8 +31,38 @@ const textResult = (text: string) => ({ content: [{ type: "text" as const, text 
 function ensureActive(context: ToolContext): void {
   context.signal.throwIfAborted();
   if (!context.active || context.handle.deleted) throw new Error("This agent run is no longer active");
+  if (context.grill) return;
   const thread = new CommentStore(context.handle.doc).list().find(entry => entry.id === context.threadId);
   if (!thread || thread.resolved || thread.orphaned) throw new Error("The comment is resolved, orphaned or gone");
+}
+
+export function summaryQuote(text: string): string {
+  let quote = /^#{1,6}[\t ]+.+$/m.exec(text)?.[0] ?? text.split("\n").find(line => line.trim()) ?? "";
+  if (!quote) return quote;
+  const start = text.indexOf(quote);
+  while (text.indexOf(quote, start + 1) >= 0) {
+    const nextLine = text.indexOf("\n", start + quote.length + 1);
+    quote = text.slice(start, nextLine < 0 ? text.length : nextLine);
+  }
+  return quote;
+}
+
+export function createComment(context: ToolContext, quote: string, body: string): string {
+  ensureActive(context);
+  if (!context.grill) throw new Error("Only grill runs may create comments");
+  if (!quote || !body.trim()) throw new Error("Quote and body must not be empty");
+  const text = committedText(context.handle.text);
+  const from = text.indexOf(quote);
+  if (from < 0) throw new Error("Quote not found in committed text; read again and adjust the quote");
+  if (text.indexOf(quote, from + 1) >= 0) throw new Error("Ambiguous quote; include more surrounding text");
+  const summary = quote === summaryQuote(text);
+  if (summary ? context.grill.summary : context.grill.findings >= 8) throw new Error(summary ? "Only one summary comment is allowed" : "At most 8 findings are allowed");
+  const id = new CommentStore(context.handle.doc).add({ text: context.handle.text,
+    from: committedToFull(context.handle.text, from), to: committedToFull(context.handle.text, from + quote.length),
+    body, authorId: context.author.id, authorName: context.author.name });
+  if (summary) context.grill.summary = true;
+  else context.grill.findings++;
+  return id;
 }
 
 export function suggestEdit(context: ToolContext, from: number, to: number, replacement: string, note?: string): string {
@@ -70,6 +101,11 @@ export function suggestEdit(context: ToolContext, from: number, to: number, repl
 
 export function createTools(context: ToolContext) {
   return [
+    ...(context.grill ? [defineTool({
+      name: "create_comment", label: "Create review comment", description: "Post an exact, uniquely anchored finding (maximum 8). Reserve the first heading/first nonempty line quote for one final summary comment.",
+      parameters: Type.Object({ quote: Type.String({ minLength: 1 }), body: Type.String({ minLength: 1, maxLength: 12000 }) }),
+      async execute(_id, args) { return textResult(createComment(context, args.quote, args.body)); },
+    })] : []),
     defineTool({
       name: "read_document", label: "Read document", description: "Read committed Markdown. Offsets are characters in committed text, not pending suggestions.",
       parameters: Type.Object({ path: Type.Optional(Type.String()), offsetChars: Type.Optional(Type.Integer({ minimum: 0 })), limitChars: Type.Optional(Type.Integer({ minimum: 1, maximum: 40000 })) }),
@@ -109,6 +145,7 @@ export function createTools(context: ToolContext) {
       parameters: Type.Object({ threadId: Type.String(), body: Type.String({ minLength: 1, maxLength: 12000 }) }),
       async execute(_id, args) {
         ensureActive(context);
+        if (context.grill) throw new Error("Grill runs have no active thread; use create_comment");
         if (args.threadId !== context.threadId) throw new Error("Only the active comment thread may be answered");
         new CommentStore(context.handle.doc).reply(args.threadId, args.body, context.author.id, context.author.name);
         context.replies.push(args.body);

@@ -7,7 +7,8 @@
     "marginote": "dist/marginote.js",
     "marginote-mcp": "dist/marginote-mcp.js"
   },
-  "description": "Google Docs for Markdown - real-time collaborative editing over plain .md files, with AI agents as live collaborators.",
+  "description": "Local-first collaborative Markdown with an embedded margin agent and draft grilling.",
+  "author": "Heet Dalsania and Quire contributors; Marginote maintainer: jxtse",
   "files": [
     "dist/",
     "web/",

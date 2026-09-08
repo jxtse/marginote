@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentBudget, CommentStore, Vault, committedText, insertAttributed, pendingSuggestions, readPolicy, registerAuthor, spans, writePolicy } from "@marginote/bridge";
 import { defaultConfig } from "../src/config.js";
 import { documentPath, readImage } from "../src/sandbox.js";
-import { createTools, suggestEdit, type ToolContext } from "../src/tools.js";
+import { createComment, createTools, suggestEdit, summaryQuote, type ToolContext } from "../src/tools.js";
 import { newSession } from "../src/session.js";
 
 let root: string;
@@ -25,6 +25,46 @@ beforeEach(async () => {
 afterEach(async () => { vi.unstubAllGlobals(); await vault?.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); });
 
 describe("sandbox tools", () => {
+  it("anchors grill findings in committed text despite pending insertions", () => {
+    context.grill = { findings: 0, summary: false };
+    insertAttributed(context.handle.text, 8, "PENDING", context.author, { suggestion: "pending" });
+    const id = createComment(context, "bcd", "Define this term.");
+    const thread = new CommentStore(context.handle.doc).list().find(entry => entry.id === id)!;
+    expect(thread.quote).toBe("bcd");
+    expect(thread.authorId).toBe(context.author.id);
+    expect(context.grill.findings).toBe(1);
+    expect(() => createComment(context, "PENDING", "No")).toThrow(/not found/);
+  });
+  it("rejects absent, empty and ambiguous quotes without consuming the cap", () => {
+    context.grill = { findings: 0, summary: false };
+    context.handle.text.insert(context.handle.text.length, "abc abc");
+    expect(() => createComment(context, "absent", "Fix")).toThrow(/not found/);
+    expect(() => createComment(context, "", "Fix")).toThrow(/empty/);
+    expect(() => createComment(context, "abc", "Fix")).toThrow(/Ambiguous/);
+    expect(context.grill.findings).toBe(0);
+    createComment(context, "abcdef", "Fix");
+  });
+  it("caps findings at eight plus one summary and rejects late calls", () => {
+    context.grill = { findings: 0, summary: false };
+    for (let index = 0; index < 8; index++) createComment(context, "abcdef", `Fix ${index}`);
+    expect(() => createComment(context, "abcdef", "Ninth")).toThrow(/8 findings/);
+    createComment(context, "# Title", "Weakness; strength; 1. First 2. Second 3. Third");
+    expect(() => createComment(context, "# Title", "Again")).toThrow(/one summary/);
+    expect(createTools(context).map(tool => tool.name)).toContain("create_comment");
+    context.active = false;
+    expect(() => createComment(context, "abcdef", "Late")).toThrow(/no longer active/);
+  });
+  it("disambiguates a repeated heading for the summary and handles headingless drafts", () => {
+    const text = "# Title\nFirst\n# Title\nSecond\n";
+    expect(summaryQuote(text)).toBe("# Title\nFirst");
+    expect(summaryQuote("\nPlain draft\nMore text")).toBe("Plain draft");
+    expect(summaryQuote("\n")).toBe("");
+    context.handle.text.delete(0, context.handle.text.length);
+    context.handle.text.insert(0, text);
+    context.grill = { findings: 0, summary: false };
+    createComment(context, summaryQuote(text), "Summary");
+    expect(context.grill).toEqual({ findings: 0, summary: true });
+  });
   it("rejects traversal, metadata, absolute and symlink escapes", async () => {
     await writeFile(join(outside, "secret.md"), "secret");
     await symlink(join(outside, "secret.md"), join(root, "escape.md"));

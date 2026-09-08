@@ -2,6 +2,10 @@
   "name": "marginote-monorepo",
   "private": true,
   "license": "AGPL-3.0-or-later",
+  "author": "Heet Dalsania and Quire contributors; Marginote maintainer: jxtse",
+  "repository": { "type": "git", "url": "git+https://github.com/jxtse/marginote.git" },
+  "homepage": "https://github.com/jxtse/marginote",
+  "bugs": { "url": "https://github.com/jxtse/marginote/issues" },
   "type": "module",
   "workspaces": [
     "packages/*"

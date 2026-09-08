@@ -244,7 +244,16 @@ export class MarginoteServer {
       try {
         if (url.pathname === "/api/agent/config" && req.method === "GET") json(maskedConfig(this.agent.config.current));
         else if (url.pathname === "/api/agent/config" && req.method === "POST") json(await this.agent.config.save(JSON.parse(await readBody(req, 32768))));
-        else if (url.pathname === "/api/agent/status" && req.method === "GET") json(this.agent.status);
+        else if (url.pathname === "/api/agent/status" && req.method === "GET") {
+          const path = url.searchParams.get("doc");
+          json({ ...this.agent.status, ...(path ? { busy: this.vault.list().includes(path) && this.agent.busy(this.room(path)) } : {}) });
+        }
+        else if (url.pathname === "/api/agent/grill" && req.method === "POST") {
+          const input = JSON.parse(await readBody(req, 32768));
+          if (typeof input?.doc !== "string" || !this.vault.list().includes(input.doc)) { json({ error: "Document not found" }, 404); return; }
+          if (!this.agent.status.configured) { json({ error: "Configure an API key and model in Settings first" }, 409); return; }
+          json({ enqueued: true, runId: this.agent.grill(this.room(input.doc)) }, 202);
+        }
         else if (url.pathname === "/api/agent/test" && req.method === "POST") {
           try { await testConnection(this.agent.config.current); json({ ok: true }); }
           catch (error) { json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 502); }
