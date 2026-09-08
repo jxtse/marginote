@@ -7,20 +7,20 @@ import * as encoding from "lib0/encoding";
 import WebSocket from "ws";
 import { readSyncMessage, writeSyncStep1, writeUpdate } from "y-protocols/sync";
 import * as Y from "yjs";
-import { QuireServer } from "../src/index.js";
+import { MarginoteServer } from "../src/index.js";
 import { ShareRegistry } from "../src/sharing.js";
 
 const MSG_SYNC = 0;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let dir: string;
-let server: QuireServer;
+let server: MarginoteServer;
 let port: number;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "quire-share-"));
+  dir = await mkdtemp(join(tmpdir(), "marginote-share-"));
   await writeFile(join(dir, "doc.md"), "original\n", "utf8");
-  server = await QuireServer.start({ root: dir, port: 0, git: false });
+  server = await MarginoteServer.start({ root: dir, port: 0, git: false });
   port = server.port;
 });
 afterEach(async () => {

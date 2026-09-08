@@ -5,7 +5,7 @@ import { DEFAULT_DARK, DEFAULT_LIGHT, THEMES, contrast, themeById } from "../src
  * Every theme must be readable.
  *
  * Published palettes are designed for syntax highlighting, where the lowest greys are
- * comments nobody has to read. Quire uses those same roles for prose people do read, so a
+ * comments nobody has to read. Marginote uses those same roles for prose people do read, so a
  * straight mapping leaves secondary text under-contrast — Nord's nord3 on nord0 is 1.69:1,
  * and an audit of the first sixteen themes found 33 failures across 15 of them.
  *

@@ -13,7 +13,7 @@ const COLORS = Number(process.env.COLORS ?? 128);
 const START = Math.max(0, Number(process.env.START ?? 0));
 const END = Math.min(allFiles.length - 1, Number(process.env.END ?? allFiles.length - 1));
 const STEP = Math.max(1, Number(process.env.STEP ?? 1));
-const out = process.env.OUT ?? join(import.meta.dirname, "quire-demo.gif");
+const out = process.env.OUT ?? join(import.meta.dirname, "marginote-demo.gif");
 const files = allFiles.slice(START, END + 1).filter((_, i) => i % STEP === 0);
 
 if (files.length === 0) throw new Error(`No frames selected (${START}..${END}, step ${STEP})`);

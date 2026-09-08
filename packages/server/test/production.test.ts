@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { QuireServer } from "../src/index.js";
+import { MarginoteServer } from "../src/index.js";
 
 /**
  * Production readiness.
@@ -14,13 +14,13 @@ import { QuireServer } from "../src/index.js";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let dir: string;
-let server: QuireServer;
+let server: MarginoteServer;
 let base: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "quire-prod-"));
+  dir = await mkdtemp(join(tmpdir(), "marginote-prod-"));
   await writeFile(join(dir, "a.md"), "# Doc\n\n## Secret\n\nsensitive\n", "utf8");
-  server = await QuireServer.start({ root: dir, port: 0, git: false, allowExec: true });
+  server = await MarginoteServer.start({ root: dir, port: 0, git: false, allowExec: true });
   base = `http://127.0.0.1:${server.port}`;
 });
 afterEach(async () => {
@@ -114,7 +114,7 @@ describe("no endpoint writes outside the vault", () => {
   it("ignores a lockfile entry whose path escapes the vault", async () => {
     // A lockfile travels inside a vault, so it can arrive from an untrusted repository.
     await writeFile(
-      join(dir, "quire.lock"),
+      join(dir, "marginote.lock"),
       JSON.stringify({
         version: 1,
         documents: {

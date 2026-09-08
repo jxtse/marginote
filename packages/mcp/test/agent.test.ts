@@ -2,22 +2,22 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { QuireServer } from "@quire/server";
-import { type Author, acceptSuggestion, committedText, insertAttributed } from "@quire/bridge";
+import { MarginoteServer } from "@marginote/server";
+import { type Author, acceptSuggestion, committedText, insertAttributed } from "@marginote/bridge";
 import { AgentSession } from "../src/session.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const agent: Author = { id: "agent-claude", name: "Claude", color: "#f6c177", kind: "agent" };
 
 let dir: string;
-let server: QuireServer;
+let server: MarginoteServer;
 let url: string;
 const sessions: AgentSession[] = [];
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "quire-agent-"));
+  dir = await mkdtemp(join(tmpdir(), "marginote-agent-"));
   await writeFile(join(dir, "doc.md"), "The quick brown fox.\n", "utf8");
-  server = await QuireServer.start({ root: dir, port: 0, git: false });
+  server = await MarginoteServer.start({ root: dir, port: 0, git: false });
   url = `http://127.0.0.1:${server.port}`;
 });
 
@@ -109,7 +109,7 @@ describe("agent sessions", () => {
 
 describe("an agent cannot talk its way out of its own leash", () => {
   it("refuses to loosen a policy it tightened", async () => {
-    const { readPolicy, writePolicy } = await import("@quire/bridge");
+    const { readPolicy, writePolicy } = await import("@marginote/bridge");
     const handle = server.vault.getDoc("doc.md");
 
     writePolicy(handle.doc, { mode: "propose" });
@@ -121,7 +121,7 @@ describe("an agent cannot talk its way out of its own leash", () => {
   });
 
   it("drops an agent's write while the document is read-only, and says so", async () => {
-    const { writePolicy } = await import("@quire/bridge");
+    const { writePolicy } = await import("@marginote/bridge");
     const handle = server.vault.getDoc("doc.md");
     writePolicy(handle.doc, { mode: "read-only" });
 

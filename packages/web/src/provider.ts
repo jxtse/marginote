@@ -9,7 +9,7 @@ const MSG_AWARENESS = 1;
 const MSG_EPOCH = 2;
 
 /**
- * Minimal Yjs websocket client speaking the same protocol as @quire/server.
+ * Minimal Yjs websocket client speaking the same protocol as @marginote/server.
  * Deliberately not y-websocket: that package assumes a room-name-in-path URL scheme,
  * and a document path is not a room name.
  */

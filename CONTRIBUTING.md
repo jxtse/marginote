@@ -1,10 +1,10 @@
-# Contributing to Quire
+# Contributing to Marginote
 
-Thanks for helping make Quire better. Bug reports, focused fixes, documentation improvements,
+Thanks for helping make Marginote better. Bug reports, focused fixes, documentation improvements,
 and well-scoped feature proposals are welcome.
 
-Quire is pre-1.0 and moving fast. Before opening a large pull request, please start a
-[discussion](https://github.com/heetdalsania/quire/discussions) or open a feature request. Quire is
+Marginote is pre-1.0 and moving fast. Before opening a large pull request, please start a
+[discussion](https://github.com/jxtse/marginote/discussions) or open a feature request. Marginote is
 focused on collaborative plain Markdown rather than becoming a general-purpose canvas or plugin
 platform, so explain how a large proposal strengthens that focus.
 
@@ -13,7 +13,7 @@ platform, so explain how a large proposal strengthens that focus.
 - Use Node.js 22 or newer and the npm version bundled with it.
 - Search existing issues and discussions before opening a duplicate.
 - Keep pull requests focused. Separate unrelated refactors from behavior changes.
-- Never include private vault contents, credentials, or `.quire/state/` data in fixtures or reports.
+- Never include private vault contents, credentials, or `.marginote/state/` data in fixtures or reports.
 
 ## Development setup
 
@@ -61,7 +61,7 @@ These are load-bearing. A change that violates one is a bug even if the tests pa
 
 ## Pull requests
 
-Explain the user-visible outcome and why the change belongs in Quire. Call out security,
+Explain the user-visible outcome and why the change belongs in Marginote. Call out security,
 persistence, protocol, or compatibility implications explicitly. A maintainer may ask to split a
 large change so each part can be reviewed and reverted independently.
 

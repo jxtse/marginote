@@ -128,7 +128,7 @@ describe("provenance", () => {
   it("counts text nobody claimed as unattributed rather than human", () => {
     // Pre-existing file content has no author, and pretending it is human would make the
     // whole measure a lie.
-    const { doc: d, text } = doc("written before Quire ever saw it");
+    const { doc: d, text } = doc("written before Marginote ever saw it");
     const summary = summarise(d, text, knownAuthors(d) as never);
     expect(summary.unattributedShare).toBe(1);
     expect(summary.humanShare).toBe(0);

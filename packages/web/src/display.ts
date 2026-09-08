@@ -30,7 +30,7 @@ export const DEFAULTS: DisplaySettings = {
   focusMode: false,
 };
 
-const KEY = "quire:display";
+const KEY = "marginote:display";
 
 const STACKS = {
   serif: '"Iowan Old Style","Palatino Linotype",Palatino,Charter,"Source Serif 4",Georgia,serif',

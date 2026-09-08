@@ -17,8 +17,8 @@ import {
   rejectSuggestion,
   suggestionOutcomes,
   updateTargets,
-} from "@quire/bridge";
-import { QuireServer } from "../src/index.js";
+} from "@marginote/bridge";
+import { MarginoteServer } from "../src/index.js";
 import { collectReceipt, renderReceipt } from "../src/receipt.js";
 
 const MSG_SYNC = 0;
@@ -27,13 +27,13 @@ const agent: Author = { id: "a1", name: "Claude", color: "#ea9d34", kind: "agent
 const human: Author = { id: "h1", name: "Heet", color: "#907aa9", kind: "human" };
 
 let dir: string;
-let server: QuireServer;
+let server: MarginoteServer;
 let base: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "quire-review-"));
+  dir = await mkdtemp(join(tmpdir(), "marginote-review-"));
   await writeFile(join(dir, "spec.md"), "# Spec\n\nOriginal prose.\n", "utf8");
-  server = await QuireServer.start({ root: dir, port: 0, git: false, history: true });
+  server = await MarginoteServer.start({ root: dir, port: 0, git: false, history: true });
   base = `http://127.0.0.1:${server.port}`;
 });
 afterEach(async () => {

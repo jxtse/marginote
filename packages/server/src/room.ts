@@ -9,7 +9,7 @@ import {
   writeSyncStep2,
   writeUpdate,
 } from "y-protocols/sync";
-import { AgentBudget, type DocHandle, isCommentOnlyUpdate, measureUpdate, readPolicy } from "@quire/bridge";
+import { AgentBudget, type DocHandle, isCommentOnlyUpdate, measureUpdate, readPolicy } from "@marginote/bridge";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;

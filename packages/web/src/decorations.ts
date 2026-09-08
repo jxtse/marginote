@@ -1,7 +1,7 @@
 import { RangeSetBuilder } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type * as Y from "yjs";
-import { ATTR_AUTHOR, ATTR_SUGGEST_DELETE, ATTR_SUGGEST_INSERT } from "@quire/bridge/attribution";
+import { ATTR_AUTHOR, ATTR_SUGGEST_DELETE, ATTR_SUGGEST_INSERT } from "@marginote/bridge/attribution";
 
 export interface AuthorStyle {
   name: string;

@@ -5,7 +5,7 @@ import * as Y from "yjs";
 import { CONTENT_KEY, type DocHandle } from "../src/index.js";
 
 export async function makeTempVaultDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "quire-spike-"));
+  return mkdtemp(join(tmpdir(), "marginote-spike-"));
 }
 
 export async function cleanup(dir: string): Promise<void> {

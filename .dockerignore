@@ -4,7 +4,7 @@ node_modules
 packages/cli/web
 packages/cli/registry
 .git
-.quire
+.marginote
 docs
 tools
 *.tgz

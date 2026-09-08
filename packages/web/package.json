@@ -1,5 +1,5 @@
 {
-  "name": "@quire/web",
+  "name": "@marginote/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "@codemirror/language": "^6.10.8",
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.36.1",
-    "@quire/bridge": "*",
+    "@marginote/bridge": "*",
     "lib0": "^0.2.99",
     "marked": "^15.0.4",
     "mermaid": "^11.17.0",

@@ -1,5 +1,5 @@
 /**
- * Getting a document out of Quire.
+ * Getting a document out of Marginote.
  *
  * All of this is deliberately client-side: the document is already in the browser, so
  * exporting needs no round trip, works offline, and never sends your text anywhere.
@@ -65,7 +65,7 @@ export function downloadHtml(path: string, renderedHtml: string): void {
   @media print { body { padding:0; background:#fff; color:#000; } footer { display:none; } }
 </style></head>
 <body><main>${renderedHtml}</main>
-<footer>${escapeHtml(path)} — exported from Quire on ${new Date().toLocaleDateString()}</footer>
+<footer>${escapeHtml(path)} — exported from Marginote on ${new Date().toLocaleDateString()}</footer>
 </body></html>`;
   download(new Blob([doc], { type: "text/html;charset=utf-8" }), `${title}.html`);
 }

@@ -1,11 +1,11 @@
 {
-  "name": "@quire/mcp",
+  "name": "@marginote/mcp",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "bin": {
-    "quire-mcp": "./bin/quire-mcp.js"
+    "marginote-mcp": "./bin/marginote-mcp.js"
   },
   "exports": {
     ".": {
@@ -19,13 +19,13 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@quire/bridge": "*",
+    "@marginote/bridge": "*",
     "lib0": "^0.2.99",
     "ws": "^8.18.0",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.21",
     "zod": "^3.24.1",
-    "@quire/server": "*"
+    "@marginote/server": "*"
   },
   "devDependencies": {
     "@types/ws": "^8.5.13"

@@ -1,5 +1,5 @@
 {
-  "name": "@quire/server",
+  "name": "@marginote/server",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@quire/bridge": "*",
+    "@marginote/bridge": "*",
     "lib0": "^0.2.99",
     "ws": "^8.18.0",
     "y-protocols": "^1.0.6",

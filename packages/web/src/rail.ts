@@ -8,14 +8,14 @@ import {
   registerAuthor,
   rejectSuggestion,
   spans,
-} from "@quire/bridge/attribution";
-import { CommentStore, type CommentThread } from "@quire/bridge/comments";
+} from "@marginote/bridge/attribution";
+import { CommentStore, type CommentThread } from "@marginote/bridge/comments";
 import { authorRegistry } from "./decorations.js";
 
 /**
  * Rail state.
  *
- * The comment store and the suggestion primitives come straight from @quire/bridge --
+ * The comment store and the suggestion primitives come straight from @marginote/bridge --
  * both of those modules depend only on yjs, so they bundle for the browser unchanged.
  * Re-implementing them here would mean two definitions of "accepted" that could drift.
  */

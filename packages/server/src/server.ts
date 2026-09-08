@@ -14,7 +14,7 @@ import {
   readPolicy,
   summarise,
   writePolicy,
-} from "@quire/bridge";
+} from "@marginote/bridge";
 import { buildLinkGraph } from "./links.js";
 import {
   RegistryFetchError,
@@ -40,7 +40,7 @@ import { ShareRegistry, type ShareRole } from "./sharing.js";
 import { searchDocuments, searchVault } from "./search.js";
 import { Room } from "./room.js";
 
-export interface QuireServerOptions extends VaultOptions {
+export interface MarginoteServerOptions extends VaultOptions {
   port?: number;
   host?: string;
   /** Directory containing the built web client. */
@@ -73,7 +73,7 @@ const MIME: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
 };
 
-export class QuireServer {
+export class MarginoteServer {
   /** Capability links. In memory only, so they never outlive the session that made them. */
   readonly shares = new ShareRegistry();
 
@@ -96,7 +96,7 @@ export class QuireServer {
 
   private constructor(
     readonly vault: Vault,
-    private readonly opts: QuireServerOptions,
+    private readonly opts: MarginoteServerOptions,
   ) {
     this.git = opts.git ? new GitSnapshotter(vault, opts.git) : null;
 
@@ -139,9 +139,9 @@ export class QuireServer {
     }
   }
 
-  static async start(options: QuireServerOptions): Promise<QuireServer> {
+  static async start(options: MarginoteServerOptions): Promise<MarginoteServer> {
     const vault = await Vault.open(options);
-    const server = new QuireServer(vault, options);
+    const server = new MarginoteServer(vault, options);
     await server.listen();
     server.gitReady = Boolean(server.git && (await server.git.isRepo()));
     if (server.gitReady) server.git?.start();
@@ -174,7 +174,7 @@ export class QuireServer {
       // is to kill the process -- so a single malformed request could end everyone's
       // session. Every request is contained, whatever the endpoint does.
       void this.onRequest(req, res).catch((error: unknown) => {
-        console.error(`[quire] request failed: ${(error as Error).message}`);
+        console.error(`[marginote] request failed: ${(error as Error).message}`);
         if (res.headersSent) return res.destroy();
         res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ error: "Request failed" }));
@@ -216,7 +216,7 @@ export class QuireServer {
   private async onRequest(req: IncomingMessage, res: import("node:http").ServerResponse): Promise<void> {
     if (!isRequestAllowed(req, { allowedHosts: this.opts.allowedHosts ?? [] })) {
       res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
-      res.end("Forbidden: this Quire server only answers its own origin.");
+      res.end("Forbidden: this Marginote server only answers its own origin.");
       return;
     }
 
@@ -259,7 +259,7 @@ export class QuireServer {
         "cache-control": "no-cache",
         connection: "keep-alive",
       });
-      if (this.eventStreams.size >= QuireServer.MAX_EVENT_STREAMS) {
+      if (this.eventStreams.size >= MarginoteServer.MAX_EVENT_STREAMS) {
         res.end("event: error\ndata: too many event streams\n\n");
         return;
       }
@@ -569,7 +569,7 @@ export class QuireServer {
         // Log every execution. A feature that runs arbitrary code should never do so
         // quietly.
         console.log(
-          `[quire] ran ${language} block from ${path ?? "(unknown)"} -> ${result.exitCode === 0 ? "ok" : `exit ${result.exitCode}`} in ${result.durationMs}ms`,
+          `[marginote] ran ${language} block from ${path ?? "(unknown)"} -> ${result.exitCode === 0 ? "ok" : `exit ${result.exitCode}`} in ${result.durationMs}ms`,
         );
         json({ result, markdown: formatResult(result) });
       } catch (error) {
@@ -682,7 +682,7 @@ function attribute(
   content: string,
 ): string {
   const header =
-    `<!-- Installed by Quire from ${entry.repo} (${entry.license}). ` +
+    `<!-- Installed by Marginote from ${entry.repo} (${entry.license}). ` +
     `"${entry.title}" by ${entry.byline}. Source: https://github.com/${entry.repo} -->\n\n`;
   return header + content;
 }

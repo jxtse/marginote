@@ -10,7 +10,7 @@ import { tags as t } from "@lezer/highlight";
  * Colours resolve from CSS custom properties, which means light and dark follow the
  * page automatically without a second HighlightStyle.
  */
-export const quireHighlight = syntaxHighlighting(
+export const marginoteHighlight = syntaxHighlighting(
   HighlightStyle.define([
     { tag: t.heading1, color: "var(--text)", fontWeight: "680", fontSize: "1.18em" },
     { tag: t.heading2, color: "var(--text)", fontWeight: "660", fontSize: "1.08em" },
@@ -41,7 +41,7 @@ export const quireHighlight = syntaxHighlighting(
  * Every colour is a CSS custom property, so light and dark follow the page with no
  * second theme and no flash on switch.
  */
-export const quireEditorTheme = EditorView.theme({
+export const marginoteEditorTheme = EditorView.theme({
   "&": {
     height: "100%",
     backgroundColor: "transparent",

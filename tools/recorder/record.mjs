@@ -64,7 +64,7 @@ async function humanType(text, perChar = 42) {
 
 async function placeCursorAfter(needle) {
   await page.evaluate((n) => {
-    const view = window.__quireView;
+    const view = window.__marginoteView;
     if (!view) return;
     const idx = view.state.doc.toString().indexOf(n);
     if (idx >= 0) view.dispatch({ selection: { anchor: idx + n.length }, scrollIntoView: true });
@@ -74,7 +74,7 @@ async function placeCursorAfter(needle) {
 
 async function selectText(needle) {
   await page.evaluate((n) => {
-    const view = window.__quireView;
+    const view = window.__marginoteView;
     if (!view) return;
     const from = view.state.doc.toString().indexOf(n);
     if (from >= 0) view.dispatch({ selection: { anchor: from, head: from + n.length }, scrollIntoView: true });

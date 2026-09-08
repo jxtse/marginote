@@ -1,2 +1,2 @@
 export { Room } from "./room.js";
-export { QuireServer, type QuireServerOptions } from "./server.js";
+export { MarginoteServer, type MarginoteServerOptions } from "./server.js";

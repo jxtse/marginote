@@ -5,7 +5,7 @@ import {
   knownAuthors,
   suggestionOutcomes,
   summarise,
-} from "@quire/bridge";
+} from "@marginote/bridge";
 
 /**
  * The receipt.
@@ -102,7 +102,7 @@ const pct = (n: number): string => `${Math.round(n * 100)}%`;
 /** Render the receipt as one self-contained HTML file. */
 export function renderReceipt(data: ReceiptData): string {
   const headline = data.unattributedShare > 0.5
-    ? `${pct(data.unattributedShare)} of this document predates Quire`
+    ? `${pct(data.unattributedShare)} of this document predates Marginote`
     : `${pct(data.humanShare)} human · ${pct(data.agentShare)} agent`;
 
   const bars = data.contributors
@@ -200,9 +200,9 @@ export function renderReceipt(data: ReceiptData): string {
   ${replayBlock}
   <footer>
     Measured from authorship recorded as the document was written, not inferred from the text.
-    Text written before this document was opened in Quire is counted as unattributed rather
+    Text written before this document was opened in Marginote is counted as unattributed rather
     than credited to anyone. Generated ${escape(data.generatedAt.slice(0, 10))} by
-    <a href="https://github.com/heetdalsania/quire">Quire</a>.
+    <a href="https://github.com/jxtse/marginote">Marginote</a>.
   </footer>
 </main></body></html>`;
 }

@@ -9,7 +9,7 @@ import { ATTR_AUTHOR, type Author, spans } from "./attribution.js";
  * carry one extra mark, a run id, and the run record lives once in a map. Phase 1 measured
  * span attribution at 1.38x encoded size; this keeps that shape.
  *
- * The point is that Quire never has to *infer* whether a person wrote something. It
+ * The point is that Marginote never has to *infer* whether a person wrote something. It
  * watched it being written.
  */
 export const ATTR_RUN = "run";

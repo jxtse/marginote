@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
  *  - **Off unless asked for.** Requires `--allow-exec`. There is no configuration file
  *    that can turn it on by accident.
  *  - **Loopback only.** Refused outright when the server is bound beyond localhost.
- *    Quire has no authentication, so an exposed server with execution enabled would hand
+ *    Marginote has no authentication, so an exposed server with execution enabled would hand
  *    a shell to anyone who could reach the port.
  *  - **Never automatic.** Blocks run only when a person asks for that specific block.
  *    Opening a document runs nothing, which means a malicious document installed from
@@ -66,7 +66,7 @@ export async function runBlock(
   }
   if (options.exposed) {
     throw new ExecRefused(
-      "Execution is refused while the server is reachable beyond localhost. Quire has no " +
+      "Execution is refused while the server is reachable beyond localhost. Marginote has no " +
         "authentication, so this would hand a shell to anyone who can reach the port.",
     );
   }
@@ -132,10 +132,10 @@ export async function runBlock(
       } catch {
         child.kill("SIGKILL");
       }
-      finish(null, `\n[quire] killed after ${timeoutMs}ms`);
+      finish(null, `\n[marginote] killed after ${timeoutMs}ms`);
     }, timeoutMs);
 
-    child.on("error", (error) => finish(null, `\n[quire] ${error.message}`));
+    child.on("error", (error) => finish(null, `\n[marginote] ${error.message}`));
     child.on("close", (code) => finish(code));
   });
 }
@@ -147,7 +147,7 @@ export function formatResult(result: ExecResult): string {
   const stamp = new Date().toISOString().replace("T", " ").slice(0, 19);
   return [
     "",
-    `<!-- quire:output ${stamp} ${status} ${result.durationMs}ms -->`,
+    `<!-- marginote:output ${stamp} ${status} ${result.durationMs}ms -->`,
     "```text",
     body || "(no output)",
     result.truncated ? "[output truncated]" : "",

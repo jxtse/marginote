@@ -35,9 +35,9 @@ console.log(message);
 
 ```mermaid
 flowchart LR
-  File[Local .md file] --> Quire
-  Quire --> Agent[AI agent]
-  Quire --> Human[Human editor]
+  File[Local .md file] --> Marginote
+  Marginote --> Agent[AI agent]
+  Marginote --> Human[Human editor]
 ```
 
 A footnote reference stays attached.[^source]

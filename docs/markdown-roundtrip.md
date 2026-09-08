@@ -1,7 +1,7 @@
 # Markdown round-trip comparison
 
 This test measures Markdown source fidelity, not the overall quality of either editor. Google Docs
-is a strong cloud document editor and preserved much of the fixture's meaning. Quire is designed
+is a strong cloud document editor and preserved much of the fixture's meaning. Marginote is designed
 for a different constraint: the original Markdown file remains the source of truth.
 
 ## Method
@@ -39,7 +39,7 @@ task completion states, table data, the external link, and the footnote text. Th
 - renumbered the footnote and changed `../guide.md` to `http://../guide.md`;
 - changed list indentation, table delimiter alignment, line wrapping, spaces, and the final newline.
 
-Quire's automated test loads the same fixture into a vault, opens it through the collaboration
+Marginote's automated test loads the same fixture into a vault, opens it through the collaboration
 bridge, flushes the unchanged session, and asserts byte equality before and after. Run it with:
 
 ```bash
@@ -49,7 +49,7 @@ npm test -- --run packages/bridge/test/bridge.test.ts
 ## Conclusion
 
 Google Docs' Markdown support is useful for semantic import, cloud collaboration, and later
-export. This test does not show a lossless source round trip for syntax-rich Markdown. Quire's
+export. This test does not show a lossless source round trip for syntax-rich Markdown. Marginote's
 value is narrower: editing the original local file in place while humans, agents, external
 editors, and git share one continuously synchronized workspace.
 

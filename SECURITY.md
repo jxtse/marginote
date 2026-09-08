@@ -2,9 +2,9 @@
 
 ## Posture
 
-Quire is a local-first tool. By default it binds `127.0.0.1` and serves only its own origin.
+Marginote is a local-first tool. By default it binds `127.0.0.1` and serves only its own origin.
 
-- **No telemetry, no analytics, no phone-home.** Quire never reports on you.
+- **No telemetry, no analytics, no phone-home.** Marginote never reports on you.
 - **Core editing makes no outbound requests.** Discover has three user-triggered requests:
   fetching a document from `raw.githubusercontent.com`, searching repositories via
   `api.github.com`, and listing a repository's Markdown files. Install URLs are derived from the registry index rather than from the caller and the
@@ -13,22 +13,22 @@ Quire is a local-first tool. By default it binds `127.0.0.1` and serves only its
   `--no-discover` removes the Discover surface and its requests.
 - **Direct peer setup uses public STUN only after a person chooses it.** The browser contacts
   `stun.l.google.com` or `stun1.l.google.com` to discover a route. Document bytes travel over an
-  encrypted WebRTC data channel directly between peers; Quire has no TURN relay or hosted service.
+  encrypted WebRTC data channel directly between peers; Marginote has no TURN relay or hosted service.
   Do not choose direct peer setup if contacting public STUN is unacceptable.
 - **GitHub search needs no account.** It uses the unauthenticated repository-search endpoint, which
   is rate limited to roughly ten requests a minute; results are cached and limiting is reported
-  plainly. Quire does not read or transmit `GITHUB_TOKEN` or any other credential.
+  plainly. Marginote does not read or transmit `GITHUB_TOKEN` or any other credential.
 - **No accounts.** Identity is a display name generated in your browser.
 - **Requests are origin-checked.** Browsers permit cross-origin WebSocket upgrades with no
   preflight, and a cross-origin `GET /api/files` needs no CORS approval to be *sent*. Without a
-  check, any page you had open could read and rewrite your vault. Quire refuses a request whose
+  check, any page you had open could read and rewrite your vault. Marginote refuses a request whose
   `Origin` names an untrusted host, and checks `Host` too, which closes DNS rebinding. A *missing*
   `Origin` is allowed: that means a non-browser client (the CLI, an MCP agent, curl), which is not
   a drive-by vector.
 - **Document paths are validated twice** — at the transport, and again in `Vault.getDoc`, which is
   the boundary that actually writes files and so refuses rather than trusting its caller.
 - **Writes are atomic** (temp file + rename), so a reader never sees a half-written document.
-- **Git snapshots are opt-in.** `--git` commits only Markdown paths Quire changed. It does not
+- **Git snapshots are opt-in.** `--git` commits only Markdown paths Marginote changed. It does not
   include unrelated working-tree or staged changes, and it never pushes or changes remotes.
 
 ## Exposing a vault beyond your machine
@@ -51,7 +51,7 @@ that can reach the port can already write. Treat the leash as a seatbelt, not a 
 ## Where collaboration state lives
 
 The Markdown file holds the text. Everything else -- authorship, comments, provenance,
-agent policy, suggestion outcomes -- lives in a CRDT, persisted to `.quire/state/` beside
+agent policy, suggestion outcomes -- lives in a CRDT, persisted to `.marginote/state/` beside
 the vault. That directory is an implementation detail: deleting it loses the collaboration
 layer and nothing else, and your prose is untouched. Add it to `.gitignore` unless you
 deliberately want to share attribution history. `--no-persist` turns it off entirely.
@@ -78,7 +78,7 @@ deliberately want to share attribution history. `--no-persist` turns it off enti
 - **Share links are capabilities.** There are no accounts, so the link *is* the credential. Anyone
   holding it has the role baked into it. Links live in memory and die when the server stops.
 - **Suggestions are advisory.** Any connected client can accept one; there is no reviewer role.
-- **Registry documents are third-party content.** Quire records where each installed file came
+- **Registry documents are third-party content.** Marginote records where each installed file came
   from and under what licence, but does not vet it. A `CLAUDE.md` you install changes how agents
   behave in that directory — read it before you rely on it.
 

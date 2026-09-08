@@ -5,7 +5,7 @@ import { ATTR_AUTHOR, committedText, spans } from "./attribution.js";
  * Document replay.
  *
  * "How did this spec end up like this?" is normally answered by reading twenty commits.
- * A recording answers it in fifteen seconds, and Quire can build one because the CRDT
+ * A recording answers it in fifteen seconds, and Marginote can build one because the CRDT
  * already holds every operation -- this is mostly a matter of exposing what is in memory.
  *
  * Frames are built from snapshots taken against the document's own version vector, so a

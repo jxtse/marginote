@@ -1,7 +1,7 @@
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { ATTR_AUTHOR, type Author } from "@quire/bridge/attribution";
+import { ATTR_AUTHOR, type Author } from "@marginote/bridge/attribution";
 import { configureSuggesting, suggestingExtension } from "../src/suggesting.js";
 
 const human: Author = { id: "human-1", name: "Human", color: "#336699", kind: "human" };

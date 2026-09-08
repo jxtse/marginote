@@ -5,10 +5,10 @@ import * as Y from "yjs";
 /**
  * Persisting collaboration state.
  *
- * The Markdown file carries the text and nothing else. Everything that makes Quire more
+ * The Markdown file carries the text and nothing else. Everything that makes Marginote more
  * than an editor -- who wrote each span, why, the comments, the agent policy, which
  * suggestions were accepted -- lives in the CRDT, and without a home on disk all of it
- * vanished the moment the server stopped. Restarting `quire` silently discarded every
+ * vanished the moment the server stopped. Restarting `marginote` silently discarded every
  * comment, which is not a limitation so much as a bug with a long fuse.
  *
  * So each document gets a sidecar holding its encoded state, written beside the vault
@@ -17,7 +17,7 @@ import * as Y from "yjs";
  * collaboration layer, never their prose.
  */
 
-export const STATE_DIR = ".quire/state";
+export const STATE_DIR = ".marginote/state";
 
 /** Encode a vault path as a single flat filename, reversibly and without separators. */
 export function stateFileName(relPath: string): string {

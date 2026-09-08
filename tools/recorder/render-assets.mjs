@@ -57,7 +57,7 @@ await render({
     <div class="mark"><span class="icon"></span>QUIRE</div>
     <h1>Markdown,<br>edited together.</h1>
     <p>Local-first collaboration with AI agents you can see, review, and constrain.</p>
-    <span class="command">npx quiredocs --demo</span>
+    <span class="command">npx marginote --demo</span>
   </div><div class="rule"><span></span><span></span><span></span></div>`,
 });
 
@@ -74,7 +74,7 @@ await render({
       border: 4px solid #f7f4ef; box-shadow: 11px 11px 0 #ea9d34; }
     strong { display: block; font-family: Georgia, serif; font-size: 31px; letter-spacing: 0; }
     span { display: block; margin-top: 7px; color: #c7c1d8; font-size: 13px; letter-spacing: 0; }
-  </style><main><div class="icon"></div><strong>Quire</strong><span>Markdown x agents</span></main>`,
+  </style><main><div class="icon"></div><strong>Marginote</strong><span>Markdown x agents</span></main>`,
 });
 
 await browser.close();

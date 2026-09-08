@@ -11,7 +11,7 @@ export interface SearchHit {
 
 /**
  * Full-text search via ripgrep, falling back to a plain scan when rg is absent.
- * ripgrep is optional precisely so `npx quire` works with nothing else installed.
+ * ripgrep is optional precisely so `npx marginote` works with nothing else installed.
  */
 export async function searchVault(
   root: string,

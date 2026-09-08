@@ -16,7 +16,7 @@ export default defineConfig({
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
   webServer: {
-    command: "node packages/cli/bin/quire.js --demo --port 4173 --no-discover --no-persist",
+    command: "node packages/cli/bin/marginote.js --demo --port 4173 --no-discover --no-persist",
     url: "http://127.0.0.1:4173/api/files",
     reuseExistingServer: false,
     timeout: 60_000,

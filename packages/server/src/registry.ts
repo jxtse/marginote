@@ -26,7 +26,7 @@ export interface RegistryIndex {
 /**
  * The registry is an index, not a service.
  *
- * Entries name a public repository and a path; Quire fetches the file from that source at
+ * Entries name a public repository and a path; Marginote fetches the file from that source at
  * install time and never mirrors, hosts or re-serves it. That keeps the whole feature free
  * of infrastructure, moderation and accounts -- submissions are pull requests against the
  * index file, the way Homebrew taps and awesome-lists already work.

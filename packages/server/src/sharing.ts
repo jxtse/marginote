@@ -18,7 +18,7 @@ export interface Share {
 /**
  * Capability links.
  *
- * Quire has no accounts, so a share link *is* the credential: holding the token is the
+ * Marginote has no accounts, so a share link *is* the credential: holding the token is the
  * permission. That is deliberate -- it keeps sharing free and signup-free -- but it means
  * a link is as sensitive as the documents behind it, and anyone who has it has the role
  * baked into it.

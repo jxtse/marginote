@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The filesystem bridge is the riskiest part of Quire and watchers differ by
+        # The filesystem bridge is the riskiest part of Marginote and watchers differ by
         # platform, so it is worth proving on more than one.
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: ["22", "24"]
@@ -60,12 +60,12 @@ jobs:
           cd packages/cli && npm pack --silent
           mkdir -p /tmp/smoke/vault && cd /tmp/smoke
           npm init -y >/dev/null
-          npm install "$GITHUB_WORKSPACE"/packages/cli/quiredocs-*.tgz --silent
+          npm install "$GITHUB_WORKSPACE"/packages/cli/marginote-*.tgz --silent
           printf '# Smoke\n\nhello\n' > vault/smoke.md
-          ./node_modules/.bin/quire vault --port 4321 &
+          ./node_modules/.bin/marginote vault --port 4321 &
           sleep 5
           curl -fsS http://127.0.0.1:4321/api/files | grep -q smoke.md
-          curl -fsS http://127.0.0.1:4321/ | grep -q '<title>Quire</title>'
+          curl -fsS http://127.0.0.1:4321/ | grep -q '<title>Marginote</title>'
           echo "packaged binary serves the vault"
 
   docker:
@@ -73,11 +73,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build the image
-        run: docker build -t quire:ci .
+        run: docker build -t marginote:ci .
       - name: Run it against a vault
         run: |
           mkdir -p /tmp/vault && printf '# Docker\n\nhello\n' > /tmp/vault/d.md
-          docker run -d --name quire -p 4321:4321 -v /tmp/vault:/vault quire:ci
+          docker run -d --name marginote -p 4321:4321 -v /tmp/vault:/vault marginote:ci
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4321/api/files && break || sleep 1; done
           curl -fsS http://127.0.0.1:4321/api/files | grep -q d.md
-          docker logs quire
+          docker logs marginote

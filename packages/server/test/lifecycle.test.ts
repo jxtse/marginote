@@ -8,7 +8,7 @@ import WebSocket from "ws";
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate } from "y-protocols/awareness";
 import { readSyncMessage, writeSyncStep1, writeUpdate } from "y-protocols/sync";
 import * as Y from "yjs";
-import { QuireServer } from "../src/index.js";
+import { MarginoteServer } from "../src/index.js";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -16,13 +16,13 @@ const MSG_EPOCH = 2;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let dir: string;
-let server: QuireServer;
+let server: MarginoteServer;
 let port: number;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "quire-life-"));
+  dir = await mkdtemp(join(tmpdir(), "marginote-life-"));
   await writeFile(join(dir, "doc.md"), "start\n", "utf8");
-  server = await QuireServer.start({ root: dir, port: 0, git: false });
+  server = await MarginoteServer.start({ root: dir, port: 0, git: false });
   port = server.port;
 });
 
@@ -31,7 +31,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-/** A minimal browser-equivalent client speaking Quire's wire protocol. */
+/** A minimal browser-equivalent client speaking Marginote's wire protocol. */
 class TestClient {
   readonly doc = new Y.Doc();
   readonly text: Y.Text;

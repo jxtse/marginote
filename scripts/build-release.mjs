@@ -6,8 +6,8 @@ import { build } from "esbuild";
 /**
  * Assemble the publishable package.
  *
- * Quire is a workspace during development but ships as a single package, because the
- * onboarding promise is `npx quire <folder>` and that has to work with one install and no
+ * Marginote is a workspace during development but ships as a single package, because the
+ * onboarding promise is `npx marginote <folder>` and that has to work with one install and no
  * cross-package version dance. The two entry points are bundled with their dependencies,
  * and the web client and registry are copied in beside them.
  */
@@ -27,8 +27,8 @@ await rm(join(out, "registry"), { recursive: true, force: true });
 await mkdir(join(out, "dist"), { recursive: true });
 
 for (const [entry, name] of [
-  ["packages/cli/bin/quire.js", "quire.js"],
-  ["packages/mcp/bin/quire-mcp.js", "quire-mcp.js"],
+  ["packages/cli/bin/marginote.js", "marginote.js"],
+  ["packages/mcp/bin/marginote-mcp.js", "marginote-mcp.js"],
 ]) {
   const result = await build({
     entryPoints: [join(root, entry)],
@@ -43,8 +43,8 @@ for (const [entry, name] of [
     // global `require` exists, so one is provided from import.meta.url.
     banner: {
       js: [
-        "import { createRequire as __quireCreateRequire } from 'node:module';",
-        "const require = __quireCreateRequire(import.meta.url);",
+        "import { createRequire as __marginoteCreateRequire } from 'node:module';",
+        "const require = __marginoteCreateRequire(import.meta.url);",
       ].join("\n"),
     },
     // Keep names readable so a stack trace from a user is worth something.

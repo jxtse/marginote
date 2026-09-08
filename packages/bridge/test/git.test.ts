@@ -20,8 +20,8 @@ beforeEach(async () => {
   await writeFile(join(dir, "private.txt"), "private original\n", "utf8");
   await git("init", "-q", "-b", "main");
   await git("config", "core.autocrlf", "false");
-  await git("config", "user.email", "test@quire.local");
-  await git("config", "user.name", "Quire Test");
+  await git("config", "user.email", "test@marginote.local");
+  await git("config", "user.name", "Marginote Test");
   await git("add", "doc.md", "private.txt");
   await git("commit", "-qm", "base");
 });
@@ -33,12 +33,12 @@ afterEach(async () => {
 });
 
 describe("git snapshots", () => {
-  it("commits only Markdown paths Quire changed and preserves unrelated staged work", async () => {
+  it("commits only Markdown paths Marginote changed and preserves unrelated staged work", async () => {
     vault = await Vault.open({ root: dir });
     snapshots = new GitSnapshotter(vault, { intervalMs: 60_000 });
     snapshots.start();
 
-    vault.getDoc("doc.md").text.insert(vault.getDoc("doc.md").text.length, "changed by Quire\n");
+    vault.getDoc("doc.md").text.insert(vault.getDoc("doc.md").text.length, "changed by Marginote\n");
     await writeFile(join(dir, "private.txt"), "private changed\n", "utf8");
     await git("add", "private.txt");
     await vault.flush();

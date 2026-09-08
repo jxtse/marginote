@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { QuireServer } from "../src/index.js";
+import { MarginoteServer } from "../src/index.js";
 import { buildLinkGraph } from "../src/links.js";
 import { searchVault } from "../src/search.js";
 
@@ -13,13 +13,13 @@ const exec = promisify(execFile);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let dir: string;
-let server: QuireServer;
+let server: MarginoteServer;
 let port: number;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "quire-hard-"));
+  dir = await mkdtemp(join(tmpdir(), "marginote-hard-"));
   await writeFile(join(dir, "doc.md"), "# Doc\n\nbody\n", "utf8");
-  server = await QuireServer.start({ root: dir, port: 0, git: false });
+  server = await MarginoteServer.start({ root: dir, port: 0, git: false });
   port = server.port;
 });
 
@@ -48,10 +48,10 @@ function openSocket(docPath: string, headers: Record<string, string> = {}) {
 
 describe("path traversal", () => {
   it("refuses a document path that escapes the vault", async () => {
-    const outside = join(tmpdir(), `quire-escape-${Date.now()}.md`);
+    const outside = join(tmpdir(), `marginote-escape-${Date.now()}.md`);
     await rm(outside, { force: true });
 
-    const result = await openSocket("../../../../../../tmp/quire-escape.md");
+    const result = await openSocket("../../../../../../tmp/marginote-escape.md");
     await sleep(300);
 
     // Whatever the transport does, nothing may be created outside the vault.
@@ -113,7 +113,7 @@ describe("hostile and unusual filenames", () => {
   });
 
   it("does not follow symlinks out of the vault", async () => {
-    const outside = await mkdtemp(join(tmpdir(), "quire-outside-"));
+    const outside = await mkdtemp(join(tmpdir(), "marginote-outside-"));
     await writeFile(join(outside, "secret.md"), "# Secret\n", "utf8");
     await symlink(outside, join(dir, "linked"), "dir").catch(() => {});
     await sleep(600);

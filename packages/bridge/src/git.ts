@@ -17,7 +17,7 @@ export interface GitSnapshotOptions {
  * Periodic git commits of the vault.
  *
  * Git is the archive, never the transport. Nothing here takes part in live sync; it only
- * records restore points. A snapshot must include only document paths Quire changed. It
+ * records restore points. A snapshot must include only document paths Marginote changed. It
  * must never sweep unrelated work from the repository into one of its commits.
  */
 export class GitSnapshotter {
@@ -82,7 +82,7 @@ export class GitSnapshotter {
     }
   }
 
-  /** Commit pending Markdown paths written by Quire, without touching unrelated work. */
+  /** Commit pending Markdown paths written by Marginote, without touching unrelated work. */
   async commit(message?: string): Promise<string | null> {
     if (!(await this.isRepo())) return null;
     const paths = [...this.pendingPaths].sort();
@@ -103,14 +103,14 @@ export class GitSnapshotter {
       "git",
       [
         "-c",
-        `user.name=${this.opts.authorName ?? "Quire"}`,
+        `user.name=${this.opts.authorName ?? "Marginote"}`,
         "-c",
-        `user.email=${this.opts.authorEmail ?? "snapshot@quire.local"}`,
+        `user.email=${this.opts.authorEmail ?? "snapshot@marginote.local"}`,
         "commit",
         "-q",
         "--only",
         "-m",
-        message ?? `Quire snapshot ${stamp}`,
+        message ?? `Marginote snapshot ${stamp}`,
         "--",
         ...pathspecs,
       ],

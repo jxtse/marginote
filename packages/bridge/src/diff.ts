@@ -78,7 +78,7 @@ function buildPositionMap(base: string, ours: string): (p: number) => number {
 /**
  * Merge an external change into a Y.Text using three-way semantics.
  *
- *   base   -- the file content Quire last observed on disk
+ *   base   -- the file content Marginote last observed on disk
  *   theirs -- the file content now on disk
  *   ours   -- the current CRDT text, which may have diverged since `base`
  *
@@ -86,7 +86,7 @@ function buildPositionMap(base: string, ours: string): (p: number) => number {
  * discard concurrent in-memory edits. Instead we extract the *external* edit as
  * `diff(base, theirs)` and replay it onto `ours` through a position map.
  *
- * When `ours === base` (the overwhelmingly common case, since Quire writes to disk
+ * When `ours === base` (the overwhelmingly common case, since Marginote writes to disk
  * continuously) this reduces to an exact two-way diff with no approximation at all.
  *
  * Returns true if anything changed.

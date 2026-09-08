@@ -6,7 +6,7 @@ coverage/
 .env
 .env.*
 !.env.example
-.quire/
+.marginote/
 .agents/
 tools/recorder/frames/
 playwright-report/

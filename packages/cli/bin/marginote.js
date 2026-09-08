@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { QuireServer } from "@quire/server";
+import { MarginoteServer } from "@marginote/server";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(resolve(here, "../package.json"), "utf8"));
@@ -14,7 +14,7 @@ const { version } = JSON.parse(readFileSync(resolve(here, "../package.json"), "u
  *
  * In the repository the web client and registry live in sibling packages; in the published
  * package they sit beside the bundled entry point. Checking both means one binary works
- * from a clone and from `npx quire` without a build-time substitution.
+ * from a clone and from `npx marginote` without a build-time substitution.
  */
 const locate = (...candidates) => candidates.map((c) => resolve(here, c)).find(existsSync) ?? null;
 const args = process.argv.slice(2);
@@ -26,17 +26,17 @@ if (args.includes("--version") || args.includes("-v")) {
 
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-  quire <directory>       Make a folder of Markdown files collaborative.
-  quire --demo             Try Quire in a disposable sample vault.
+  marginote <directory>       Make a folder of Markdown files collaborative.
+  marginote --demo             Try Marginote in a disposable sample vault.
 
-    -v, --version         Print the installed Quire version
+    -v, --version         Print the installed Marginote version
     --demo                Create sample Markdown in a temporary folder, then remove it
-                          when Quire stops. No existing files are read or changed.
+                          when Marginote stops. No existing files are read or changed.
     --port <n>            Port to listen on (default 4321)
     --host <addr>         Bind address (default 127.0.0.1, local only)
     --allow-host <name>   Additionally trust this hostname (repeatable). Needed only
                           when deliberately exposing the vault, e.g. via a tunnel.
-    --git                 Opt in to periodic git snapshots of Markdown changed by Quire
+    --git                 Opt in to periodic git snapshots of Markdown changed by Marginote
     --no-discover         Disable the Discover tab (no outbound requests at all)
     --no-search           Keep the curated index, but disable live GitHub search
     --no-persist          Do not save collaboration state. Comments, attribution and
@@ -66,11 +66,11 @@ const positional = args.filter((a, i) => !a.startsWith("--") && !String(args[i -
 const demo = args.includes("--demo");
 let demoRoot = null;
 if (demo) {
-  demoRoot = await mkdtemp(join(tmpdir(), "quire-demo-"));
+  demoRoot = await mkdtemp(join(tmpdir(), "marginote-demo-"));
   await Promise.all([
-    writeFile(join(demoRoot, "welcome.md"), `# Welcome to Quire
+    writeFile(join(demoRoot, "welcome.md"), `# Welcome to Marginote
 
-This vault is disposable. Explore freely: it is removed when Quire stops.
+This vault is disposable. Explore freely: it is removed when Marginote stops.
 
 ## Try the editor
 
@@ -122,7 +122,7 @@ const allowedHosts = args.reduce((acc, arg, i) => {
 
 let server;
 try {
-  server = await QuireServer.start({
+  server = await MarginoteServer.start({
     root,
     webRoot,
     port: Number(flag("--port", 4321)),
@@ -142,11 +142,11 @@ try {
 }
 
 const count = server.vault.list().length;
-console.log(`\n  Quire\n`);
+console.log(`\n  Marginote\n`);
 console.log(`  vault   ${root}`);
 console.log(`  docs    ${count} markdown file${count === 1 ? "" : "s"}`);
 console.log(`  local   http://127.0.0.1:${server.port}\n`);
-if (demoRoot) console.log(`  demo    disposable -- removed when Quire stops`);
+if (demoRoot) console.log(`  demo    disposable -- removed when Marginote stops`);
 const snapshots = server.git && (await server.git.isRepo());
 console.log(`  git     ${snapshots ? "snapshots on (commits when idle)" : "not a repository -- snapshots off"}`);
 if (args.includes("--history")) {

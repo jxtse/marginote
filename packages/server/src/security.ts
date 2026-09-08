@@ -1,11 +1,11 @@
 import type { IncomingMessage } from "node:http";
 
 /**
- * A Quire server is reachable at a predictable loopback address, which makes it a target
+ * A Marginote server is reachable at a predictable loopback address, which makes it a target
  * for drive-by attacks from any page the user happens to have open: browsers allow
  * cross-origin WebSocket connections with no preflight, and a plain GET to /api/files
  * needs no CORS approval to be *sent*. Without these checks, visiting a hostile page
- * while Quire is running would expose -- and let it rewrite -- every document.
+ * while Marginote is running would expose -- and let it rewrite -- every document.
  *
  * The rule: browsers always send Origin on WebSocket upgrades and on cross-origin
  * fetches, so a *present* Origin must be one we recognise. A *missing* Origin means a
@@ -86,6 +86,6 @@ export function isSafeDocPath(path: string): boolean {
   const segments = normalised.split("/");
   if (segments.some((s) => s === ".." || s === "." || s === "")) return false;
   // Never expose repository or dependency internals through a document path.
-  if (segments.some((s) => s === ".git" || s === "node_modules" || s === ".quire")) return false;
+  if (segments.some((s) => s === ".git" || s === "node_modules" || s === ".marginote")) return false;
   return true;
 }

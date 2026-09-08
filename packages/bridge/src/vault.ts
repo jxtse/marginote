@@ -56,7 +56,7 @@ const DEFAULTS = {
   persist: true,
 };
 
-const TMP_PREFIX = ".quire-tmp-";
+const TMP_PREFIX = ".marginote-tmp-";
 let tmpCounter = 0;
 const RENAME_RETRY_MS = [10, 25, 50, 100, 200];
 
@@ -140,7 +140,7 @@ export class Vault extends EventEmitter {
       const absPath = join(entry.parentPath, entry.name);
       const relPath = this.toRel(absPath);
       if (!relPath || !this.isDocument(relPath)) continue;
-      if (relPath.split("/").some((p) => p === ".git" || p === "node_modules" || p === ".quire")) continue;
+      if (relPath.split("/").some((p) => p === ".git" || p === "node_modules" || p === ".marginote")) continue;
 
       const content = await this.readDoc(absPath, relPath);
       if (content === null) continue;
@@ -351,7 +351,7 @@ export class Vault extends EventEmitter {
       ignored: (p: string) => {
         const b = basename(p);
         if (b.startsWith(TMP_PREFIX)) return true;
-        return b === ".git" || b === "node_modules" || b === ".quire";
+        return b === ".git" || b === "node_modules" || b === ".marginote";
       },
     });
 

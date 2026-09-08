@@ -1,11 +1,11 @@
 {
-  "name": "quiredocs",
+  "name": "marginote",
   "version": "0.1.0-beta.3",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "bin": {
-    "quire": "dist/quire.js",
-    "quire-mcp": "dist/quire-mcp.js"
+    "marginote": "dist/marginote.js",
+    "marginote-mcp": "dist/marginote-mcp.js"
   },
   "description": "Google Docs for Markdown - real-time collaborative editing over plain .md files, with AI agents as live collaborators.",
   "files": [
@@ -33,11 +33,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/heetdalsania/quire.git"
+    "url": "git+https://github.com/jxtse/marginote.git"
   },
-  "homepage": "https://github.com/heetdalsania/quire",
+  "homepage": "https://github.com/jxtse/marginote",
   "bugs": {
-    "url": "https://github.com/heetdalsania/quire/issues"
+    "url": "https://github.com/jxtse/marginote/issues"
   },
   "scripts": {
     "prepublishOnly": "node ../../scripts/check-release.mjs"

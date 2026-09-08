@@ -17,11 +17,11 @@ import {
   spans,
   summarise,
   writePolicy,
-} from "@quire/bridge";
+} from "@marginote/bridge";
 import { AgentSession } from "./session.js";
 
 export interface McpOptions {
-  /** Base URL of the running Quire server. */
+  /** Base URL of the running Marginote server. */
   serverUrl: string;
   agentName: string;
   agentColor: string;
@@ -124,17 +124,17 @@ export async function createQuireMcpServer(options: McpOptions): Promise<McpServ
 
   const listFiles = async (): Promise<string[]> => {
     const res = await fetch(new URL("/api/files", options.serverUrl));
-    if (!res.ok) throw new Error(`Quire server returned ${res.status}`);
+    if (!res.ok) throw new Error(`Marginote server returned ${res.status}`);
     return ((await res.json()) as { files: string[] }).files;
   };
 
-  const server = new McpServer({ name: "quire", version: "0.1.0-beta.1" });
+  const server = new McpServer({ name: "marginote", version: "0.1.0-beta.1" });
 
   server.registerTool(
     "list_documents",
     {
       title: "List documents",
-      description: "List every Markdown document in the Quire vault.",
+      description: "List every Markdown document in the Marginote vault.",
       inputSchema: {},
     },
     async () => {

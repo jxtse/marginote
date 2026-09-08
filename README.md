@@ -1,31 +1,31 @@
-# Quire
+# Marginote
 
-[![CI](https://github.com/heetdalsania/quire/actions/workflows/ci.yml/badge.svg)](https://github.com/heetdalsania/quire/actions/workflows/ci.yml)
-[![npm beta](https://img.shields.io/npm/v/quiredocs/beta?label=npm%20beta)](https://www.npmjs.com/package/quiredocs)
+[![CI](https://github.com/jxtse/marginote/actions/workflows/ci.yml/badge.svg)](https://github.com/jxtse/marginote/actions/workflows/ci.yml)
+[![npm beta](https://img.shields.io/npm/v/marginote/beta?label=npm%20beta)](https://www.npmjs.com/package/marginote)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](./LICENSE)
 
 **Local Markdown for humans and AI agents, with every edit visible, attributable, and reviewable.**
 
-Point Quire at a folder of Markdown. The original `.md` files become a live multiplayer workspace,
+Point Marginote at a folder of Markdown. The original `.md` files become a live multiplayer workspace,
 and AI agents can join the same editing sessions as first-class collaborators with visible cursors
 and separately revertable edits. There is no import step, cloud copy, or conversion round trip:
 your filesystem remains the source of truth, ready for git, vim, VS Code, and every other tool you
 already use.
 
-![Quire: a person and an agent editing the same document at once](docs/demo.gif)
+![Marginote: a person and an agent editing the same document at once](docs/demo.gif)
 
 *Recorded against the real application. A person types while an agent edits the same document,
 proposes a change that never touches the file until it is accepted, and then authorship is
 revealed. Nobody reloads, and nothing conflicts.*
 
-**Public beta:** Quire requires Node.js 22 or newer and runs locally with no Quire account,
+**Public beta:** Marginote requires Node.js 22 or newer and runs locally with no Marginote account,
 subscription, or telemetry.
 
 ## Quick start
 
 ```bash
-npx quiredocs ~/my-notes
+npx marginote ~/my-notes
 ```
 
 Open `http://127.0.0.1:4321` in a browser. Press `Ctrl+C` in the terminal when you are done.
@@ -34,20 +34,20 @@ Or from a clone:
 
 ```bash
 npm install && npm run build
-node packages/cli/bin/quire.js ~/my-notes
+node packages/cli/bin/marginote.js ~/my-notes
 ```
 
 No account. No signup. Binds `127.0.0.1` by default. Core editing makes no outbound requests.
 
-Not ready to point it at your own files? Start a sample vault that is deleted when Quire stops:
+Not ready to point it at your own files? Start a sample vault that is deleted when Marginote stops:
 
 ```bash
-npx quiredocs --demo
+npx marginote --demo
 ```
 
 ## Where it sits
 
-Plenty of tools do two of these. Quire is the one that does all three.
+Plenty of tools do two of these. Marginote is the one that does all three.
 
 | | Multiplayer | Agent-native | Plain files |
 |---|:---:|:---:|:---:|
@@ -55,9 +55,9 @@ Plenty of tools do two of these. Quire is the one that does all three.
 | Obsidian · SilverBullet · Logseq | ❌ | ~ | ✅ |
 | [SoloMD](https://github.com/zhitongblog/solomd) | ❌ | ✅ | ✅ |
 | [CollabMD](https://github.com/andes90/collabmd) | ✅ | ❌ | ✅ |
-| **Quire** | ✅ | ✅ | ✅ |
+| **Marginote** | ✅ | ✅ | ✅ |
 
-The difference that matters: in Quire the agent is a peer in the *same CRDT session* you are typing
+The difference that matters: in Marginote the agent is a peer in the *same CRDT session* you are typing
 in — visible cursor, attributed spans, separately revertable — rather than a batch process whose
 diff you read afterwards.
 
@@ -65,18 +65,18 @@ diff you read afterwards.
 
 [Google Docs can import and export Markdown](https://support.google.com/docs/answer/12014036?hl=en),
 and other cloud editors offer similar conversion workflows. That is useful when the cloud document
-is the workspace. Quire is for the opposite workflow: the files in your local folder stay
+is the workspace. Marginote is for the opposite workflow: the files in your local folder stay
 authoritative while people, agents, external editors, and git can all work with them.
 
-| | Cloud Markdown import/export | **Quire** |
+| | Cloud Markdown import/export | **Marginote** |
 |---|---|---|
 | Source of truth | A converted cloud document | The original local `.md` file |
 | File workflow | Import, collaborate, export | Edit in place with continuous filesystem sync |
 | External tools | Reconcile after export | Changes from editors and git merge into the live session |
 | AI collaboration | Assistant output inside a document | MCP agents with presence, attribution, policies, suggestions, and author-specific revert |
-| Account and hosting | Provider account and cloud service | No Quire account; localhost by default |
+| Account and hosting | Provider account and cloud service | No Marginote account; localhost by default |
 
-Quire does not claim that every renderer interprets every Markdown extension identically. It does
+Marginote does not claim that every renderer interprets every Markdown extension identically. It does
 keep syntax-rich Markdown as source text, and the release suite checks a fixture containing YAML
 frontmatter, task lists, tables, fenced code, Mermaid, wiki-links, footnotes, raw HTML, and comments
 for byte-for-byte stability through an unchanged editing session. The same fixture changed by 22
@@ -97,9 +97,9 @@ inserted and 30 deleted lines after an untouched Google Docs import/export round
 | **Wiki-links** | `[[links]]`, backlinks panel, unresolved links flagged |
 | **Search** | ripgrep-backed, with an in-process fallback |
 | **Mermaid** | Rendered in the live preview |
-| **Git snapshots** | Optional `--git` restore points commit only Markdown paths Quire changed; snapshots are off by default |
+| **Git snapshots** | Optional `--git` restore points commit only Markdown paths Marginote changed; snapshots are off by default |
 | **Discover** | Browse widely-used Markdown — agent configs, skills, conventions — and add it to your vault with provenance recorded. An index, not a host: files come from their own repositories |
-| **Durable collaboration** | Authorship, comments, provenance and policy persist in `.quire/state/` and survive a restart. The Markdown stays clean; delete the directory and you lose only the collaboration layer |
+| **Durable collaboration** | Authorship, comments, provenance and policy persist in `.marginote/state/` and survive a restart. The Markdown stays clean; delete the directory and you lose only the collaboration layer |
 | **Themes** | Sixteen colourways — Paper, Ink, Nord, Gruvbox, Solarized, Dracula, Tokyo Night, Catppuccin, Everforest, Monokai, Sepia, Terminal, and classic light and dark. Contrast is corrected per theme and asserted in tests |
 | **Live updates** | Files created by an agent, by Discover, or by another tool appear immediately |
 | **Provenance receipts** | One click turns a document into a shareable page: how much a person wrote, how much an agent did, which suggestions were accepted, and a replay of it being written. Self-contained HTML — no server, no account, works offline |
@@ -113,40 +113,40 @@ inserted and 30 deleted lines after an untouched Google Docs import/export round
 
 ## Connecting an agent
 
-Keep Quire running, then add its local MCP server to the client you use. These commands download
-the published Quire package from npm; they do not require a Quire account or credential.
+Keep Marginote running, then add its local MCP server to the client you use. These commands download
+the published Marginote package from npm; they do not require a Marginote account or credential.
 
 ### Claude Code
 
 ```bash
-claude mcp add quire -- npx -y -p quiredocs@latest quire-mcp \
+claude mcp add marginote -- npx -y -p marginote@latest marginote-mcp \
   --url http://127.0.0.1:4321 --name "Claude Code"
 ```
 
 On native Windows, put `cmd /c` before `npx`:
 
 ```powershell
-claude mcp add quire -- cmd /c npx -y -p quiredocs@latest quire-mcp --url http://127.0.0.1:4321 --name "Claude Code"
+claude mcp add marginote -- cmd /c npx -y -p marginote@latest marginote-mcp --url http://127.0.0.1:4321 --name "Claude Code"
 ```
 
 ### Codex
 
 ```bash
-codex mcp add quire -- npx -y -p quiredocs@latest quire-mcp \
+codex mcp add marginote -- npx -y -p marginote@latest marginote-mcp \
   --url http://127.0.0.1:4321 --name Codex
 ```
 
 ### Cursor
 
-Add this to `.cursor/mcp.json` in the project where Cursor should use Quire:
+Add this to `.cursor/mcp.json` in the project where Cursor should use Marginote:
 
 ```json
 {
   "mcpServers": {
-    "quire": {
+    "marginote": {
       "command": "npx",
       "args": [
-        "-y", "-p", "quiredocs@latest", "quire-mcp",
+        "-y", "-p", "marginote@latest", "marginote-mcp",
         "--url", "http://127.0.0.1:4321",
         "--name", "Cursor"
       ]
@@ -155,8 +155,8 @@ Add this to `.cursor/mcp.json` in the project where Cursor should use Quire:
 }
 ```
 
-Restart or reload the client after adding Quire. The AI client may require its own account or paid
-plan; that is separate from Quire, which remains free and local.
+Restart or reload the client after adding Marginote. The AI client may require its own account or paid
+plan; that is separate from Marginote, which remains free and local.
 
 Tools: `list_documents`, `read_document`, `edit_document` (with `suggest`), `append_document`,
 `list_suggestions`, `list_comments`, `add_comment`, `search_vault`.
@@ -166,23 +166,23 @@ CRDTs make that a non-event.
 
 ## Trust and permissions
 
-Quire is open source under AGPL-3.0-or-later, and the npm package is built from this
+Marginote is open source under AGPL-3.0-or-later, and the npm package is built from this
 repository. The package has no runtime dependency downloads and no `preinstall`, `install`, or
 `postinstall` hooks. Its `prepublishOnly` script is a maintainer-side release check; npm does not
-run it when somebody installs Quire.
+run it when somebody installs Marginote.
 
-What Quire can do on a user's computer:
+What Marginote can do on a user's computer:
 
 | Surface | Default | Exact behavior |
 |---|---|---|
-| **Files** | On | Reads Markdown under the folder passed on the command line. Writes edited Markdown, collaboration state in `.quire/state/`, and `quire.lock` when a Discover item is added. Paths outside the chosen folder are rejected |
-| **Git** | Off | `--git` enables local snapshots. Quire commits only Markdown paths it changed and does not push, pull, alter remotes, or include unrelated staged work |
-| **Network** | Core editing is offline | Discover contacts `api.github.com` and `raw.githubusercontent.com` only after a person searches, previews, or installs. Direct peer setup contacts Google's public STUN service only after a person chooses that command; document bytes then travel over encrypted WebRTC directly between peers, with no Quire relay |
-| **Code execution** | Off | `--allow-exec` permits a person to run a selected fenced block as their own OS user. Nothing runs when a document opens, and execution is refused when Quire is bound beyond loopback |
-| **Agents** | Disconnected | An MCP client receives vault read/edit tools only after the user starts `quire-mcp` and points it at the local server. Connect only agents you trust with that folder |
-| **Sharing** | Local only | Share links are capabilities served by the running Quire process. Quire does not upload the vault or operate a hosted relay |
+| **Files** | On | Reads Markdown under the folder passed on the command line. Writes edited Markdown, collaboration state in `.marginote/state/`, and `marginote.lock` when a Discover item is added. Paths outside the chosen folder are rejected |
+| **Git** | Off | `--git` enables local snapshots. Marginote commits only Markdown paths it changed and does not push, pull, alter remotes, or include unrelated staged work |
+| **Network** | Core editing is offline | Discover contacts `api.github.com` and `raw.githubusercontent.com` only after a person searches, previews, or installs. Direct peer setup contacts Google's public STUN service only after a person chooses that command; document bytes then travel over encrypted WebRTC directly between peers, with no Marginote relay |
+| **Code execution** | Off | `--allow-exec` permits a person to run a selected fenced block as their own OS user. Nothing runs when a document opens, and execution is refused when Marginote is bound beyond loopback |
+| **Agents** | Disconnected | An MCP client receives vault read/edit tools only after the user starts `marginote-mcp` and points it at the local server. Connect only agents you trust with that folder |
+| **Sharing** | Local only | Share links are capabilities served by the running Marginote process. Marginote does not upload the vault or operate a hosted relay |
 
-Quire has no analytics, advertising SDK, auto-updater, credential prompt, background service, or
+Marginote has no analytics, advertising SDK, auto-updater, credential prompt, background service, or
 payment integration. Discover does not read or forward `GITHUB_TOKEN`. Third-party Markdown added
 through Discover is data, not executable code, but agent instruction files can influence an agent
 that later reads them; inspect imported content before relying on it.
@@ -193,10 +193,10 @@ vault." The complete threat model and limitations are in [SECURITY.md](./SECURIT
 
 ## Cost
 
-Quire itself is free to download, run, self-host, and publish as a public npm package. It requires
-no paid Quire infrastructure. Your computer, internet connection, and any AI provider you connect
+Marginote itself is free to download, run, self-host, and publish as a public npm package. It requires
+no paid Marginote infrastructure. Your computer, internet connection, and any AI provider you connect
 are separate: Claude, OpenAI, a hosted VM, a domain, a tunnel, Codespaces, or a larger CI runner may
-charge under that provider's own plan. None is required for local Quire.
+charge under that provider's own plan. None is required for local Marginote.
 
 ## Self-hosting
 
@@ -204,22 +204,22 @@ charge under that provider's own plan. None is required for local Quire.
 docker compose up --build
 ```
 
-The container binds to `127.0.0.1` deliberately. Quire has no authentication, so anyone who
+The container binds to `127.0.0.1` deliberately. Marginote has no authentication, so anyone who
 can reach the port can read and edit every document — read [SECURITY.md](./SECURITY.md)
 before widening that.
 
 ## Community
 
-Questions and ideas belong in [Discussions](https://github.com/heetdalsania/quire/discussions).
-Use the [issue tracker](https://github.com/heetdalsania/quire/issues) for reproducible bugs and
+Questions and ideas belong in [Discussions](https://github.com/jxtse/marginote/discussions).
+Use the [issue tracker](https://github.com/jxtse/marginote/issues) for reproducible bugs and
 planned features, and read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
-If Quire solves a problem you care about, starring the repository helps other people find it.
+If Marginote solves a problem you care about, starring the repository helps other people find it.
 
 ## Contact
 
-- General questions and feedback: [GitHub Discussions](https://github.com/heetdalsania/quire/discussions)
-- Bug reports: [GitHub Issues](https://github.com/heetdalsania/quire/issues)
-- Security vulnerabilities: [report privately](https://github.com/heetdalsania/quire/security/advisories/new)
+- General questions and feedback: [GitHub Discussions](https://github.com/jxtse/marginote/discussions)
+- Bug reports: [GitHub Issues](https://github.com/jxtse/marginote/issues)
+- Security vulnerabilities: [report privately](https://github.com/jxtse/marginote/security/advisories/new)
 
 ## Documents
 
@@ -229,10 +229,10 @@ If Quire solves a problem you care about, starring the repository helps other pe
 | [SECURITY.md](./SECURITY.md) | Threat model and known limitations |
 | [RELEASING.md](./RELEASING.md) | How to build, verify and publish a release |
 | [CHANGELOG.md](./CHANGELOG.md) | What is in each version |
-| [docs/markdown-roundtrip.md](./docs/markdown-roundtrip.md) | Reproducible Quire and Google Docs Markdown fidelity comparison |
+| [docs/markdown-roundtrip.md](./docs/markdown-roundtrip.md) | Reproducible Marginote and Google Docs Markdown fidelity comparison |
 | [tools/recorder](./tools/recorder) | Regenerates `docs/demo.gif` from the real app |
 
 ## Licence
 
-The entire repository and the bundled `quiredocs` distribution are licensed under
-AGPL-3.0-or-later. Quire does not currently publish a separate permissive SDK.
+The entire repository and the bundled `marginote` distribution are licensed under
+AGPL-3.0-or-later. Marginote does not currently publish a separate permissive SDK.

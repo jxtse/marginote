@@ -8,7 +8,7 @@ test("the disposable demo loads, edits, previews, and persists", async ({ page, 
   });
 
   const documents: Record<string, { path: string; heading: string }> = {
-    chromium: { path: "welcome.md", heading: "Welcome to Quire" },
+    chromium: { path: "welcome.md", heading: "Welcome to Marginote" },
     firefox: { path: "project-plan.md", heading: "Launch plan" },
     webkit: { path: "architecture.md", heading: "Architecture" },
   };

@@ -11,21 +11,21 @@ body:
   - type: input
     id: version
     attributes:
-      label: Quire version
-      placeholder: "Output of `quire --version`, or the commit SHA if running from a clone"
+      label: Marginote version
+      placeholder: "Output of `marginote --version`, or the commit SHA if running from a clone"
     validations: { required: true }
   - type: dropdown
     id: how
     attributes:
       label: How are you running it
-      options: [npx quiredocs@beta, cloned repository, Docker, other]
+      options: [npx marginote@beta, cloned repository, Docker, other]
     validations: { required: true }
   - type: textarea
     id: flags
     attributes:
       label: Flags
       description: The full command. Whether --history, --allow-exec or --host were set changes a lot.
-      placeholder: quire ~/notes --history
+      placeholder: marginote ~/notes --history
   - type: textarea
     id: env
     attributes:

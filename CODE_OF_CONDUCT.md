@@ -2,7 +2,7 @@
 
 ## Our commitment
 
-Quire's community should be a welcoming place for people of every background and level of
+Marginote's community should be a welcoming place for people of every background and level of
 experience. Contributors, maintainers, and users are expected to communicate with respect,
 assume good intent, and make room for constructive disagreement.
 
@@ -24,7 +24,7 @@ impact, and patterns of behavior while protecting the privacy and safety of peop
 incident.
 
 Report conduct concerns privately through a
-[GitHub security advisory](https://github.com/heetdalsania/quire/security/advisories/new) and put
+[GitHub security advisory](https://github.com/jxtse/marginote/security/advisories/new) and put
 `Code of Conduct` at the start of the report title. Reports will be reviewed by the maintainer and
 handled as confidentially as practical.
 

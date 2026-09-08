@@ -7,7 +7,7 @@ import {
   authorOrigin,
   insertAttributed,
   proposeDelete,
-} from "@quire/bridge/attribution";
+} from "@marginote/bridge/attribution";
 
 /**
  * Suggesting mode for people, the counterpart to the agent's `suggest` flag.
@@ -18,7 +18,7 @@ import {
  *
  * It works by intercepting the editor's own transactions before they apply and replaying
  * them as marked CRDT operations instead. Letting the edit through and *then* marking it
- * would briefly write un-reviewed text into the document -- and, because Quire writes
+ * would briefly write un-reviewed text into the document -- and, because Marginote writes
  * continuously, straight to disk.
  */
 

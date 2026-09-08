@@ -3,7 +3,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { yCollab } from "y-codemirror.next";
-import { quireEditorTheme, quireHighlight } from "./theme.js";
+import { marginoteEditorTheme, marginoteHighlight } from "./theme.js";
 import { IndexeddbPersistence } from "y-indexeddb";
 import * as Y from "yjs";
 import {
@@ -124,7 +124,7 @@ async function purgeStaleOfflineStores(): Promise<void> {
   try {
     const dbs = await indexedDB.databases?.();
     for (const db of dbs ?? []) {
-      if (db.name?.startsWith("quire:") && !db.name.startsWith(`quire:${epoch}:`)) {
+      if (db.name?.startsWith("marginote:") && !db.name.startsWith(`marginote:${epoch}:`)) {
         indexedDB.deleteDatabase(db.name);
       }
     }
@@ -333,7 +333,7 @@ async function browseRepo(hit: GithubHit): Promise<void> {
           }
         }));
       }
-      panel.append(hint("Files come straight from the repository. Quire records where each one came from."));
+      panel.append(hint("Files come straight from the repository. Marginote records where each one came from."));
     });
   } catch (error) {
     toast((error as Error).message, true);
@@ -434,7 +434,7 @@ const pct = (n: number): string => `${(n * 100).toFixed(n >= 0.995 || n === 0 ? 
  * Provenance, read from marks laid down at write time.
  *
  * Every other tool answering "did a person write this?" is guessing from the prose.
- * Quire watched it being written, so this is a record rather than an estimate.
+ * Marginote watched it being written, so this is a record rather than an estimate.
  */
 function renderProvenance(panel: HTMLElement, summary: ProvenanceSummary): void {
   if (summary.totalChars === 0) {
@@ -477,7 +477,7 @@ function renderProvenance(panel: HTMLElement, summary: ProvenanceSummary): void 
 
   panel.append(hint(
     "Counted from marks written at the time, not inferred from the text. Text that predates " +
-    "Quire is reported as unattributed rather than credited to anyone.",
+    "Marginote is reported as unattributed rather than credited to anyone.",
   ));
 }
 
@@ -861,7 +861,7 @@ async function open(path: string): Promise<void> {
 
   // Local-first: the document is readable and editable from IndexedDB before -- and
   // without -- a server round trip.
-  persistence = new IndexeddbPersistence(`quire:${epoch}:${path}`, doc);
+  persistence = new IndexeddbPersistence(`marginote:${epoch}:${path}`, doc);
 
   const nextProvider = new SyncProvider(url.toString(), doc, (connected) => {
     if (provider !== nextProvider) return;
@@ -883,8 +883,8 @@ async function open(path: string): Promise<void> {
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown(),
-        quireEditorTheme,
-        quireHighlight,
+        marginoteEditorTheme,
+        marginoteHighlight,
         EditorView.lineWrapping,
         yCollab(ytext, nextProvider.awareness),
         suggestingExtension(),
@@ -905,7 +905,7 @@ async function open(path: string): Promise<void> {
   });
 
   // Exposed for automated walkthroughs and end-to-end tests; harmless in normal use.
-  (window as unknown as { __quireView?: EditorView }).__quireView = view;
+  (window as unknown as { __marginoteView?: EditorView }).__marginoteView = view;
 
   pathEl.textContent = path;
   await paintPreview();
@@ -1062,7 +1062,7 @@ async function joinPeer(): Promise<void> {
  * Ask someone to look at a document.
  *
  * This is the growth loop worth having: the invitation does the recruiting, and the
- * reviewer needs no account, no install, and no explanation of what Quire is.
+ * reviewer needs no account, no install, and no explanation of what Marginote is.
  */
 async function requestReview(): Promise<void> {
   if (!current) return;
@@ -1392,7 +1392,7 @@ async function boot(): Promise<void> {
     historyEnabled = info.history ?? false;
   } catch {
     setStatus("server unreachable", false);
-    pathEl.textContent = "Cannot reach the Quire server. Is it still running?";
+    pathEl.textContent = "Cannot reach the Marginote server. Is it still running?";
     return;
   }
 

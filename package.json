@@ -1,5 +1,5 @@
 {
-  "name": "quire-monorepo",
+  "name": "marginote-monorepo",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -10,13 +10,13 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc --build && npm run build -w @quire/web",
+    "build": "tsc --build && npm run build -w @marginote/web",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "typecheck": "tsc --build --pretty",
     "verify": "npm run typecheck && npm test && npm run build:release && npm run check:release",
-    "start": "node packages/cli/bin/quire.js",
+    "start": "node packages/cli/bin/marginote.js",
     "build:release": "npm run build && node scripts/build-release.mjs",
     "check:release": "node scripts/check-release.mjs"
   },

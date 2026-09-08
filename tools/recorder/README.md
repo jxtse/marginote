@@ -10,7 +10,7 @@ Requires Google Chrome (used via `puppeteer-core`, so nothing is downloaded).
 ```bash
 # 1. Build and serve a disposable vault with history enabled
 npm run build
-node packages/cli/bin/quire.js /tmp/quire-demo-vault --port 4430 --history
+node packages/cli/bin/marginote.js /tmp/marginote-demo-vault --port 4430 --history
 
 # 2. Install recorder-only dependencies without changing the root package
 cd tools/recorder

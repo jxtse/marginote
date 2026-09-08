@@ -11,7 +11,7 @@ let dir: string;
 let vault: Vault;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "quire-edge-"));
+  dir = await mkdtemp(join(tmpdir(), "marginote-edge-"));
 });
 afterEach(async () => {
   await vault?.close();
@@ -149,7 +149,7 @@ describe("collaboration state survives a restart", () => {
     handle = vault.getDoc("a.md");
 
     expect(handle.getContent()).toContain("Attributed sentence.");
-    // Everything that makes Quire more than an editor used to vanish here.
+    // Everything that makes Marginote more than an editor used to vanish here.
     expect(summarise(handle.doc, handle.text, knownAuthors(handle.doc) as never).humanShare).toBeGreaterThan(0);
     expect(new CommentStore(handle.doc).list()).toHaveLength(1);
     expect(readPolicy(handle.doc).mode).toBe("propose");
@@ -190,7 +190,7 @@ describe("collaboration state survives a restart", () => {
     await rm(join(dir, "temp.md"));
     vault = await Vault.open({ root: dir });
     // Sidecars for deleted documents would otherwise accumulate forever.
-    const left = await readdir(join(dir, ".quire/state")).catch(() => []);
+    const left = await readdir(join(dir, ".marginote/state")).catch(() => []);
     expect(left).toHaveLength(0);
   }, 20_000);
 
@@ -201,6 +201,6 @@ describe("collaboration state survives a restart", () => {
     handle.doc.transact(() => handle.text.insert(handle.text.length, "edit"));
     await vault.flush();
     await sleep(400);
-    expect(vault.list().every((p) => !p.includes(".quire"))).toBe(true);
+    expect(vault.list().every((p) => !p.includes(".marginote"))).toBe(true);
   }, 20_000);
 });

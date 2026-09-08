@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { buildReplay, frameBudget, insertAttributed, replayFrameText, type Author } from "@quire/bridge";
-import { QuireServer } from "../src/index.js";
+import { buildReplay, frameBudget, insertAttributed, replayFrameText, type Author } from "@marginote/bridge";
+import { MarginoteServer } from "../src/index.js";
 import { ExecRefused, formatResult, runBlock, supportedLanguages } from "../src/exec.js";
 import { checkDrift, hashText, readLockfile, recordInstall, stripProvenanceHeader } from "../src/lockfile.js";
 
@@ -13,7 +13,7 @@ const human: Author = { id: "h1", name: "Heet", color: "#907aa9", kind: "human" 
 
 let dir: string;
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "quire-feat-"));
+  dir = await mkdtemp(join(tmpdir(), "marginote-feat-"));
 });
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
@@ -27,7 +27,7 @@ describe("executable documents", () => {
   });
 
   it("refuses whenever the server is reachable beyond localhost", async () => {
-    // Quire has no authentication, so an exposed server with execution enabled would hand
+    // Marginote has no authentication, so an exposed server with execution enabled would hand
     // a shell to anyone who could reach the port.
     await expect(runBlock("bash", "echo hi", { ...base, enabled: true, exposed: true })).rejects.toThrow(
       /beyond localhost/,
@@ -84,7 +84,7 @@ describe("executable documents", () => {
     });
     expect(markdown).toContain("```text");
     expect(markdown).toContain("hello");
-    expect(markdown).toContain("quire:output");
+    expect(markdown).toContain("marginote:output");
   });
 });
 
@@ -102,11 +102,11 @@ describe("upstream drift", () => {
     expect(lock.documents["CLAUDE.md"]?.repo).toBe("multica-ai/andrej-karpathy-skills");
     expect(lock.documents["CLAUDE.md"]?.installedHash).toBe(hashText("upstream body"));
     // Written as plain JSON so it is reviewable in a diff, like any other lockfile.
-    expect(await readFile(join(dir, "quire.lock"), "utf8")).toContain("andrej-karpathy-skills");
+    expect(await readFile(join(dir, "marginote.lock"), "utf8")).toContain("andrej-karpathy-skills");
   });
 
-  it("ignores the provenance header Quire wrote itself", () => {
-    const withHeader = '<!-- Installed by Quire from a/b (MIT). "T" by a. Source: x -->\n\n# Body\n';
+  it("ignores the provenance header Marginote wrote itself", () => {
+    const withHeader = '<!-- Installed by Marginote from a/b (MIT). "T" by a. Source: x -->\n\n# Body\n';
     expect(stripProvenanceHeader(withHeader)).toBe("# Body\n");
     // Otherwise every installed document would register as locally edited immediately.
     expect(hashText(stripProvenanceHeader(withHeader))).toBe(hashText("# Body\n"));
@@ -207,7 +207,7 @@ describe("replay", () => {
 describe("exec endpoint", () => {
   it("is advertised as disabled by default", async () => {
     await writeFile(join(dir, "a.md"), "# A\n", "utf8");
-    const server = await QuireServer.start({ root: dir, port: 0, git: false });
+    const server = await MarginoteServer.start({ root: dir, port: 0, git: false });
     const res = await fetch(`http://127.0.0.1:${server.port}/api/files`);
     const body = (await res.json()) as { exec: boolean };
     expect(body.exec).toBe(false);

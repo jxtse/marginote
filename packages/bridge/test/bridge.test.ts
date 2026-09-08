@@ -91,7 +91,7 @@ describe("Phase 1 bridge spike -- acceptance", () => {
     expect(handle.getContent().slice(resolved!.index, resolved!.index + 5)).toBe("bravo");
   });
 
-  it("3. Quire's own writes do not echo back into a loop", async () => {
+  it("3. Marginote's own writes do not echo back into a loop", async () => {
     await write("loop.md", "seed\n");
     vault = await Vault.open({ root: dir });
 
@@ -120,7 +120,7 @@ describe("Phase 1 bridge spike -- acceptance", () => {
     await write("spec.md", "line one\nline two\nline three\n");
     await git("init", "-q", "-b", "main");
     await git("config", "core.autocrlf", "false");
-    await git("config", "user.email", "spike@quire.test");
+    await git("config", "user.email", "spike@marginote.test");
     await git("config", "user.name", "Spike");
     await git("add", "spec.md");
     await git("commit", "-qm", "base");

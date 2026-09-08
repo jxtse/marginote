@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { runStdio } from "@quire/mcp";
+import { runStdio } from "@marginote/mcp";
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -9,9 +9,9 @@ const flag = (name, fallback) => {
 
 if (args.includes("--help") || args.includes("-h")) {
   console.error(`
-  quire-mcp --url http://127.0.0.1:4321
+  marginote-mcp --url http://127.0.0.1:4321
 
-  Exposes a running Quire vault to any MCP client. The agent joins each document's
+  Exposes a running Marginote vault to any MCP client. The agent joins each document's
   live session as a peer: visible cursor, attributed edits, optional suggest mode.
 
     --name <name>     Display name (default Claude)

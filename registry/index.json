@@ -1,7 +1,7 @@
 {
   "version": 1,
   "updated": "2026-08-26",
-  "note": "A curated index of widely-used Markdown documents. Every entry points at a public repository; Quire fetches the file directly from that source at install time and never mirrors or hosts it. Submissions are pull requests to this file.",
+  "note": "A curated index of widely-used Markdown documents. Every entry points at a public repository; Marginote fetches the file directly from that source at install time and never mirrors or hosts it. Submissions are pull requests to this file.",
   "categories": [
     { "id": "agent-config", "label": "Agent config", "blurb": "Files coding agents read before they touch your repo." },
     { "id": "skills", "label": "Skills", "blurb": "Reusable capabilities you can drop into an agent." },
@@ -182,7 +182,7 @@
       "id": "backlog-md",
       "title": "Backlog.md",
       "byline": "MrLesk",
-      "description": "Managing project collaboration between humans and agents in plain Markdown, which is very much the Quire worldview.",
+      "description": "Managing project collaboration between humans and agents in plain Markdown, which is very much the Marginote worldview.",
       "category": "conventions",
       "repo": "MrLesk/Backlog.md",
       "branch": "main",

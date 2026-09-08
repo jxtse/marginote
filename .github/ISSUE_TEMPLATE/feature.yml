@@ -1,5 +1,5 @@
 name: Feature request
-description: Propose a focused improvement to Quire.
+description: Propose a focused improvement to Marginote.
 labels: [enhancement]
 body:
   - type: textarea

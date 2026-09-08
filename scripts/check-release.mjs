@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
  *
  * The failure this guards against is specific and silent: a published package whose
  * bundled entry point is stale, or whose web client was never copied in. The user finds
- * out when `npx quire` exits with "Web client not found", which is the worst possible
+ * out when `npx marginote` exits with "Web client not found", which is the worst possible
  * first impression.
  */
 const cli = join(dirname(fileURLToPath(import.meta.url)), "../packages/cli");
@@ -15,7 +15,7 @@ const problems = [];
 
 const exists = async (p) => access(join(cli, p)).then(() => true).catch(() => false);
 
-for (const required of ["dist/quire.js", "dist/quire-mcp.js", "web/index.html", "registry/index.json", "LICENSE"]) {
+for (const required of ["dist/marginote.js", "dist/marginote-mcp.js", "web/index.html", "registry/index.json", "LICENSE"]) {
   if (!(await exists(required))) problems.push(`missing ${required} — run: npm run build:release`);
 }
 
@@ -26,7 +26,7 @@ if (await exists("web/assets")) {
   problems.push("missing web/assets — the client was not built");
 }
 
-for (const entry of ["dist/quire.js", "dist/quire-mcp.js"]) {
+for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
   if (!(await exists(entry))) continue;
   const body = await readFile(join(cli, entry), "utf8");
   const shebangs = (body.match(/^#!/gm) ?? []).length;
@@ -37,11 +37,11 @@ for (const entry of ["dist/quire.js", "dist/quire-mcp.js"]) {
 
 const pkg = JSON.parse(await readFile(join(cli, "package.json"), "utf8"));
 const expectedLicense = "AGPL-3.0-or-later";
-const expectedBins = { quire: "dist/quire.js", "quire-mcp": "dist/quire-mcp.js" };
+const expectedBins = { marginote: "dist/marginote.js", "marginote-mcp": "dist/marginote-mcp.js" };
 const forbiddenInstallScripts = ["preinstall", "install", "postinstall"];
 
 // The bundles must actually start. Nothing else here proves that.
-for (const entry of ["dist/quire.js", "dist/quire-mcp.js"]) {
+for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
   if (!(await exists(entry))) continue;
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -62,7 +62,7 @@ for (const [name, target] of Object.entries(expectedBins)) {
     problems.push(`package bin.${name} is ${pkg.bin?.[name] ?? "unset"}, expected ${target}`);
   }
 }
-for (const entry of ["dist/quire.js", "dist/quire-mcp.js"]) {
+for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
   if (!(await exists(entry))) continue;
   const mode = (await stat(join(cli, entry))).mode;
   if ((mode & 0o111) === 0) problems.push(`${entry} is not executable`);
@@ -75,27 +75,27 @@ for (const script of forbiddenInstallScripts) {
   if (pkg.scripts?.[script]) problems.push(`package must not define an install-time ${script} script`);
 }
 
-for (const entry of ["dist/quire.js", "dist/quire-mcp.js"]) {
+for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
   if (!(await exists(entry))) continue;
   const body = await readFile(join(cli, entry), "utf8");
   if (body.includes("GITHUB_TOKEN")) {
-    problems.push(`${entry} reads GITHUB_TOKEN; published Quire must not forward ambient credentials`);
+    problems.push(`${entry} reads GITHUB_TOKEN; published Marginote must not forward ambient credentials`);
   }
 }
 
-if (await exists("dist/quire.js")) {
+if (await exists("dist/marginote.js")) {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   try {
-    const { stdout } = await promisify(execFile)(process.execPath, [join(cli, "dist/quire.js"), "--version"], {
+    const { stdout } = await promisify(execFile)(process.execPath, [join(cli, "dist/marginote.js"), "--version"], {
       timeout: 20_000,
     });
     if (stdout.trim() !== pkg.version) {
-      problems.push(`quire --version returned ${JSON.stringify(stdout.trim())}, expected ${pkg.version}`);
+      problems.push(`marginote --version returned ${JSON.stringify(stdout.trim())}, expected ${pkg.version}`);
     }
   } catch (error) {
     const detail = String(error.stderr || error.message).split("\n")[0];
-    problems.push(`quire --version fails: ${detail}`);
+    problems.push(`marginote --version fails: ${detail}`);
   }
 }
 
@@ -103,4 +103,4 @@ if (problems.length > 0) {
   console.error("Refusing to publish:\n" + problems.map((p) => `  - ${p}`).join("\n"));
   process.exit(1);
 }
-console.log(`quire@${pkg.version} looks publishable.`);
+console.log(`marginote@${pkg.version} looks publishable.`);

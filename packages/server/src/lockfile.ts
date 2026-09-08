@@ -15,7 +15,7 @@ import { type RegistryEntry, fetchEntry } from "./registry.js";
  * reviewable in a diff, like any other lockfile.
  */
 
-const LOCKFILE = "quire.lock";
+const LOCKFILE = "marginote.lock";
 
 export interface LockedDocument {
   path: string;
@@ -90,11 +90,11 @@ export interface DriftReport {
 }
 
 /**
- * Local content is compared with the provenance header stripped, since Quire wrote that
+ * Local content is compared with the provenance header stripped, since Marginote wrote that
  * line itself and it would otherwise register as a local edit on every document.
  */
 export function stripProvenanceHeader(text: string): string {
-  return text.replace(/^<!--\s*Installed by Quire[\s\S]*?-->\n{0,2}/, "");
+  return text.replace(/^<!--\s*Installed by Marginote[\s\S]*?-->\n{0,2}/, "");
 }
 
 /**

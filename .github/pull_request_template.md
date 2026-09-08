@@ -1,10 +1,10 @@
 ## Summary
 
-<!-- What changes for a Quire user, contributor, or operator? -->
+<!-- What changes for a Marginote user, contributor, or operator? -->
 
 ## Why
 
-<!-- What problem does this solve, and why does it belong in Quire? -->
+<!-- What problem does this solve, and why does it belong in Marginote? -->
 
 ## Verification
 

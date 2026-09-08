@@ -27,7 +27,7 @@ export const LAYOUT_DEFAULTS: Layout = {
   editorOpen: true,
 };
 
-const KEY = "quire:layout";
+const KEY = "marginote:layout";
 const LIMITS = {
   sidebar: { min: 190, max: 460 },
   rail: { min: 240, max: 520 },

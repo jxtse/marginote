@@ -4,7 +4,7 @@ import WebSocket from "ws";
 import { Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import { readSyncMessage, writeSyncStep1, writeUpdate } from "y-protocols/sync";
 import * as Y from "yjs";
-import { type AgentPolicy, type Author, readPolicy, registerAuthor, registerRun, newRunId } from "@quire/bridge";
+import { type AgentPolicy, type Author, readPolicy, registerAuthor, registerRun, newRunId } from "@marginote/bridge";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -14,7 +14,7 @@ const SYNC_STEP_2 = 1;
 const SYNC_UPDATE = 2;
 
 /**
- * A live editing session held by an agent against one Quire document.
+ * A live editing session held by an agent against one Marginote document.
  *
  * The point of the whole wedge: the agent is not rewriting a file behind everyone's
  * back, it is a peer in the same CRDT session as the humans -- so its cursor is

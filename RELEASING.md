@@ -5,8 +5,8 @@ no paid service.
 
 ## The release bundle
 
-Quire develops as a workspace but ships as a single package, because the onboarding promise
-is `npx quiredocs <folder>` and that has to work with one install.
+Marginote develops as a workspace but ships as a single package, because the onboarding promise
+is `npx marginote <folder>` and that has to work with one install.
 
 ```bash
 npm run build:release   # tsc + vite + esbuild, then stage packages/cli
@@ -31,9 +31,9 @@ The test suite does not prove the *package* works. This does:
 ```bash
 cd packages/cli && npm pack
 mkdir -p /tmp/smoke/vault && cd /tmp/smoke && npm init -y
-npm install /path/to/quiredocs-<version>.tgz
+npm install /path/to/marginote-<version>.tgz
 printf '# Hi\n\nhello\n' > vault/hi.md
-./node_modules/.bin/quire vault --port 4321
+./node_modules/.bin/marginote vault --port 4321
 ```
 
 CI does this on every push, along with a Docker build and run, Windows filesystem tests, and
@@ -50,7 +50,7 @@ git push origin main v<version>
 `prepublishOnly` runs `check:release` first, so a stale bundle cannot be published.
 
 Until a stable release exists, both npm `beta` and `latest` point to the current public beta so a
-bare `npx quiredocs` receives the safest build. After dogfooding, change the version to `0.1.0`,
+bare `npx marginote` receives the safest build. After dogfooding, change the version to `0.1.0`,
 move the changelog entry to that version, rerun every gate, and publish without `--tag beta`.
 
 ## What needs an account
@@ -59,11 +59,11 @@ These are the only steps that cannot be automated here, because they require cre
 that belong to a person:
 
 1. **npm** — create the account, then `npm login`, then `npm publish --access public` from
-   `packages/cli`. The name `quire` is taken by an unrelated package, so this project uses
-   `quiredocs`; the installed binaries remain `quire` and `quire-mcp`. Public packages are
+   `packages/cli`. The name `marginote` is taken by an unrelated package, so this project uses
+   `marginote`; the installed binaries remain `marginote` and `marginote-mcp`. Public packages are
    included in npm's free plan; a paid npm plan is needed only for private packages and related
    paid account features.
-2. **GitHub settings** — the public repository already lives at `heetdalsania/quire`.
+2. **GitHub settings** — the public repository already lives at `jxtse/marginote`.
    Enable private vulnerability reporting and require the CI workflow before merging to
    `main`. These settings require an owner in the GitHub UI.
 

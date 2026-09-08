@@ -252,7 +252,7 @@ export const themeById = (id: string): Theme | undefined => THEMES.find((t) => t
 // ── legibility ─────────────────────────────────────────────────────────────────
 //
 // Published palettes are designed for syntax highlighting, where the lowest greys are
-// comments nobody has to read. Quire uses those same roles for text people *do* read --
+// comments nobody has to read. Marginote uses those same roles for text people *do* read --
 // empty states, hints, file paths -- and mapping them straight across leaves secondary
 // text under-contrast. Nord's nord3 on nord0 is 1.69:1.
 //

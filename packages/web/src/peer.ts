@@ -95,7 +95,7 @@ export async function offerPeer(
   onState: (state: PeerState, detail?: string) => void,
 ): Promise<PeerHandle> {
   const pc = new RTCPeerConnection(STUN);
-  const channel = pc.createDataChannel("quire", { ordered: true });
+  const channel = pc.createDataChannel("marginote", { ordered: true });
   wire(doc, channel);
 
   channel.onopen = ((original) =>

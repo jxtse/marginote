@@ -65,7 +65,7 @@ export async function searchGithub(query: string, limit = 24): Promise<GithubHit
       signal: controller.signal,
       headers: {
         accept: "application/vnd.github+json",
-        "user-agent": "quire-discover",
+        "user-agent": "marginote-discover",
       },
     });
 
@@ -124,7 +124,7 @@ export async function listMarkdown(repo: string, branch: string): Promise<Array<
   const res = await fetch(`https://api.github.com/repos/${safeRepo}/contents/`, {
     headers: {
       accept: "application/vnd.github+json",
-      "user-agent": "quire-discover",
+      "user-agent": "marginote-discover",
     },
   });
   if (res.status === 403 || res.status === 429) {

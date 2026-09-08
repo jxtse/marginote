@@ -11,7 +11,7 @@ import { applyExternalChange } from "./diff.js";
  * Correctness here comes from origins, not from content comparison -- content checks
  * elsewhere are only an optimisation.
  */
-export const DISK_ORIGIN = Symbol("quire:disk");
+export const DISK_ORIGIN = Symbol("marginote:disk");
 
 export const CONTENT_KEY = "content";
 
@@ -23,7 +23,7 @@ export class DocHandle {
   path: string;
 
   /**
-   * The content Quire last knows to have been on disk. Serves as the merge base for
+   * The content Marginote last knows to have been on disk. Serves as the merge base for
    * external changes, and lets us skip redundant reads and writes.
    */
   lastDiskContent: string | null = null;
