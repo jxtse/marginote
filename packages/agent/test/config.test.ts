@@ -19,7 +19,9 @@ describe("agent config", () => {
     expect(loaded.current.apiKey).toBe("sk-private-abcdef");
     expect(loaded.current.agentName).toBe("Ada");
     expect(loaded.current.webSearch.apiKey).toBe("search-private-key");
-    expect((await stat(join(root, ".marginote/agent.json"))).mode & 0o777).toBe(0o600);
+    // POSIX mode bits are meaningless on Windows (stat reports 0o666); the wx+0o600
+    // write is still exercised, but only assert the bits where the OS enforces them.
+    if (process.platform !== "win32") expect((await stat(join(root, ".marginote/agent.json"))).mode & 0o777).toBe(0o600);
     expect(maskedConfig({ ...defaultConfig(), apiKey: "short" }).apiKey).not.toContain("short");
     await loaded.save({ apiKey: "", webSearch: { apiKey: null } });
     expect(loaded.current.apiKey).toBe("");

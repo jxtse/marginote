@@ -48,7 +48,9 @@ export async function readImage(vault: Vault, currentPath: string, path: string)
       await documentPath(root, document);
       for (const match of vault.getDoc(document).getContent().matchAll(/!\[[^\]]*\]\(\s*(?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\s*\)/g)) {
         const link = match[1] ?? match[2]!;
-        if (/^[a-z][a-z\d+.-]*:/i.test(link)) continue;
+        // Scheme must be 2+ chars (RFC 3986 compliant enough here): a single letter
+        // followed by ":" is a Windows drive path, not a URL.
+        if (/^[a-z][a-z\d+.-]+:/i.test(link)) continue;
         const linked = resolve(root, dirname(document), decodeURIComponent(link));
         if (linked === target && await noSymlinks(linked) === canonical) referenced = true;
       }
