@@ -47,7 +47,7 @@ await render({
     .command { display: inline-block; margin-top: 34px; padding: 13px 17px; background: #29263b;
       color: #fff; border-radius: 5px; font: 19px ui-monospace, SFMono-Regular, Menlo, monospace; }
     .shot { position: absolute; left: 600px; top: 58px; width: 790px; height: 524px; object-fit: cover;
-      object-position: left center; border: 1px solid #cbc4d4; border-radius: 6px;
+      object-position: right center; border: 1px solid #cbc4d4; border-radius: 6px;
       box-shadow: 0 18px 48px rgba(42, 37, 57, .16); }
     .rule { position: absolute; left: 0; bottom: 0; width: 1280px; height: 10px; display: flex; }
     .rule span:nth-child(1) { flex: 34; background: #907aa9; }
