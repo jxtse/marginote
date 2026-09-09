@@ -1,6 +1,6 @@
 # Changelog
 
-## Marginote — Unreleased
+## 0.2.0-beta.1 — Marginote
 
 - Added the embedded comment agent and source↔preview navigation layer.
 - Added Grill me: queued draft reviews with up to eight anchored findings and one summary.
