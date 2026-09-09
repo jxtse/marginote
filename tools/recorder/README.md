@@ -17,7 +17,7 @@ cd tools/recorder
 npm install --no-save --package-lock=false --ignore-scripts puppeteer-core gifenc pngjs
 
 # 3. Record and encode
-QUIRE_URL=http://127.0.0.1:4430 node record.mjs
+MARGINOTE_URL=http://127.0.0.1:4430 node record.mjs
 SCALE=1.5 COLORS=64 OUT=../../docs/demo.gif node encode.mjs
 
 # 4. Regenerate launch media from the captured real-app frames

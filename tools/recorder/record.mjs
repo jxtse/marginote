@@ -9,7 +9,7 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const { AgentSession } = await import(`${REPO}/packages/mcp/dist/src/index.js`);
 const { insertAttributed, proposeDelete } = await import(`${REPO}/packages/bridge/dist/src/index.js`);
 
-const URL_ = process.env.QUIRE_URL ?? "http://127.0.0.1:4430";
+const URL_ = process.env.MARGINOTE_URL ?? "http://127.0.0.1:4430";
 const OUT = join(import.meta.dirname, "frames");
 const W = 1340;
 const H = 760;

@@ -1,0 +1,14 @@
+Marginote
+Copyright (C) 2026 Jinxiang Xie (Marginote modifications: embedded agent,
+source/preview navigation, Grill me review, onboarding)
+
+Forked from Quire (https://github.com/heetdalsania/quire)
+Copyright (C) 2026 Heet Dalsania and Quire contributors (collaborative core)
+
+The grill prompt is adapted from Matt Pocock's MIT-licensed "grilling" skill
+(https://github.com/mattpocock/skills).
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See LICENSE for the full text.

@@ -1,14 +1,23 @@
 # Marginote
 
+[![CI](https://github.com/jxtse/marginote/actions/workflows/ci.yml/badge.svg)](https://github.com/jxtse/marginote/actions/workflows/ci.yml)
+[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](./LICENSE)
+
 **Local-first collaborative Markdown, with an agent in the margin.**
 
-Marginote is a fork of [Quire](https://github.com/heetdalsania/quire) by Heet Dalsania
-(AGPL-3.0); the collaborative core is his work. Marginote adds the embedded agent and
-navigation layer.
-
 Write in plain Markdown, collaborate live, and ask for help where the words are.
-The embedded agent answers margin comments, proposes reviewable edits, and grills
-finished drafts with specific, anchored findings—not a separate chat to copy back.
+Select text, leave a comment, and the embedded agent reads it immediately — with the
+full document, the thread history, and the exact range you marked. It answers on the
+thread, proposes reviewable edits that never touch the file until you accept them,
+and grills finished drafts with findings anchored to the exact sentences they concern.
+No separate chat window, no copying context back and forth.
+
+![Marginote: source, preview, and an agent answering comments in the margin](docs/product-screenshot.png)
+
+Marginote is a fork of [Quire](https://github.com/heetdalsania/quire) by Heet Dalsania
+(AGPL-3.0); the collaborative core is his work. Marginote adds the embedded agent,
+the source↔preview navigation layer, and the Grill me review.
 
 ## Quick start
 
@@ -25,8 +34,6 @@ npx marginote
    model id. **Save & test connection** checks a real one-token completion.
 3. Select text → leave a comment → watch the margin answer. Reply to keep talking.
 4. Click **Grill me** when your draft is ready for a tougher read.
-
-<!-- GIF placeholder: first launch → Settings → select text → comment → margin answer → Grill me. -->
 
 No account or signup. Core editing works without a key. Press `Ctrl+C` to stop.
 

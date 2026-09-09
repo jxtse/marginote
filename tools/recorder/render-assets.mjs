@@ -54,7 +54,7 @@ await render({
     .rule span:nth-child(2) { flex: 33; background: #ea9d34; }
     .rule span:nth-child(3) { flex: 33; background: #188b98; }
   </style><img class="shot" src="${screenshot}"><div class="brand">
-    <div class="mark"><span class="icon"></span>QUIRE</div>
+    <div class="mark"><span class="icon"></span>MARGINOTE</div>
     <h1>Markdown,<br>edited together.</h1>
     <p>Local-first collaboration with AI agents you can see, review, and constrain.</p>
     <span class="command">npx marginote --demo</span>

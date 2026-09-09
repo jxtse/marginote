@@ -89,7 +89,7 @@ export async function runBlock(
       // Its own process group, so a timeout can take the whole tree rather than leaving
       // orphaned children behind.
       detached: true,
-      env: { ...process.env, QUIRE_EXEC: "1" },
+      env: { ...process.env, MARGINOTE_EXEC: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
