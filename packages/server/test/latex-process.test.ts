@@ -106,9 +106,9 @@ it("ulimit unit probe reports unknown unless the kernel itself signals RLIMIT_FS
   const probe = (limit: string, directory: string) => run("/bin/sh", ["-c", `ulimit -f ${limit} || { echo unknown; exit 0; }; exec "$1" -e "$2" "$3"`, "probe", process.execPath, ULIMIT_PROBE_NODE, directory]).then((r) => r.stdout.trim());
   // Kernel fingerprint present: definite answer, and the probe file is removed.
   expect(["kib", "blocks"]).toContain(await probe("1", dir));
-  // Limit large enough that the follow-up write does not hit EFBIG: no fingerprint -> unknown,
-  // even though 1024 bytes were written successfully.
-  expect(await probe("2", dir)).toBe("unknown");
+  // Limit large enough on EITHER unit (3 KiB or 3 blocks = 1536 B) that the follow-up write
+  // does not hit EFBIG: no fingerprint -> unknown, even though 1024 bytes were written.
+  expect(await probe("3", dir)).toBe("unknown");
   // Unlimited: same.
   expect(await probe("unlimited", dir)).toBe("unknown");
   // Reviewer counterexample: a pre-existing read-only 512-byte file at every plausible
