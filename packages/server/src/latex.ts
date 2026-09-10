@@ -91,6 +91,8 @@ export interface HardLimits {
   maxFileBytes: number;
   /** RLIMIT_AS in bytes; enforced by the kernel on Linux only, ignored on macOS. */
   maxAddressSpaceBytes?: number;
+  /** Test hook: where the ulimit unit probe writes its 1 KiB file (default os.tmpdir()). */
+  probeDirectory?: string;
 }
 
 const SCAN_MAX_ENTRIES = 20_000;
@@ -199,18 +201,36 @@ const RLIMIT_PROLOGUE = [
   'shift 3; exec "$@"',
 ].join("; ");
 
-/** Cached result of detecting whether /bin/sh's `ulimit -f` counts 512-byte blocks. */
-let ulimitUnitProbe: Promise<"blocks" | "kib"> | undefined;
-function detectUlimitUnit(): Promise<"blocks" | "kib"> {
-  ulimitUnitProbe ??= new Promise((resolve) => {
-    // Under `ulimit -f 1`, writing 1024 bytes succeeds only if the unit is KiB. The probe
-    // file is removed by the same shell; SIGXFSZ on the head(1) child is the failure signal.
-    execFile("/bin/sh", ["-c", 'f="$1/marginote-ulimit-probe.$$"; ulimit -f 1; if head -c 1024 /dev/zero > "$f" 2>/dev/null; then echo kib; else echo blocks; fi; rm -f "$f"', "probe", tmpdir()], { timeout: 5_000 }, (error, stdout) => {
-      resolve(!error && stdout.trim() === "kib" ? "kib" : "blocks");
+/**
+ * Cached result of detecting whether /bin/sh's `ulimit -f` counts 512-byte blocks.
+ * Only a positive identification is cached: under `ulimit -f 1`, a 1024-byte write
+ * succeeding means KiB; a 1024-byte write failing while a 512-byte write succeeds means
+ * blocks. Any other outcome (unwritable probe dir, missing head(1), timeout) is
+ * "unknown" and is NOT cached, so the next compile re-probes rather than inheriting a
+ * failure. Callers must refuse to start the compiler on "unknown".
+ */
+let ulimitUnitProbe: Promise<"blocks" | "kib" | "unknown"> | undefined;
+const ULIMIT_PROBE = [
+  'd="$1"; a="$d/marginote-ulimit-a.$$"; b="$d/marginote-ulimit-b.$$"',
+  'trap \'rm -f "$a" "$b"\' EXIT',
+  'ulimit -f 1 || { echo unknown; exit 0; }',
+  'if head -c 1024 /dev/zero > "$a" 2>/dev/null && [ "$(wc -c < "$a" | tr -d " ")" = "1024" ]; then echo kib; exit 0; fi',
+  'if head -c 512 /dev/zero > "$b" 2>/dev/null && [ "$(wc -c < "$b" | tr -d " ")" = "512" ]; then echo blocks; exit 0; fi',
+  "echo unknown",
+].join("; ");
+function detectUlimitUnit(probeDirectory: string): Promise<"blocks" | "kib" | "unknown"> {
+  if (ulimitUnitProbe) return ulimitUnitProbe;
+  const attempt = new Promise<"blocks" | "kib" | "unknown">((resolve) => {
+    execFile("/bin/sh", ["-c", ULIMIT_PROBE, "probe", probeDirectory], { timeout: 5_000 }, (error, stdout) => {
+      const answer = error ? "unknown" : stdout.trim();
+      resolve(answer === "kib" || answer === "blocks" ? answer : "unknown");
     });
   });
+  ulimitUnitProbe = attempt.then((unit) => { if (unit === "unknown") ulimitUnitProbe = undefined; return unit; });
   return ulimitUnitProbe;
 }
+/** Test hook: forget the cached ulimit unit so the next call re-probes. */
+export function resetUlimitUnitProbe(): void { ulimitUnitProbe = undefined; }
 
 export function runBounded(command: string, args: string[], options: {
   cwd: string; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv; budget?: ResourceBudget; hardLimits?: HardLimits;
@@ -222,7 +242,8 @@ export function runBounded(command: string, args: string[], options: {
     if (options.hardLimits && process.platform !== "win32") {
       const fileKib = Math.max(1, Math.ceil(options.hardLimits.maxFileBytes / 1024));
       const addressKib = options.hardLimits.maxAddressSpaceBytes && process.platform === "linux" ? String(Math.ceil(options.hardLimits.maxAddressSpaceBytes / 1024)) : "-";
-      const unit = await detectUlimitUnit();
+      const unit = await detectUlimitUnit(options.hardLimits.probeDirectory ?? tmpdir());
+      if (unit === "unknown") throw new MediaError("Could not determine how to apply OS resource limits; refusing to start the compiler unbounded", 503, "sandbox_unavailable");
       executable = "/bin/sh";
       argv = ["-c", RLIMIT_PROLOGUE, "marginote-rlimit", String(fileKib), addressKib, unit, command, ...args];
     }
@@ -309,17 +330,21 @@ export function runBounded(command: string, args: string[], options: {
       clearTimeout(diskTimer);
       options.signal?.removeEventListener("abort", abort);
       const finish = async (): Promise<void> => {
-        // Wait for in-flight work so a late over-budget answer is still counted and no
-        // ps/scan outlives the job unobserved.
-        await Promise.allSettled([memoryLoop, diskLoop, reaping]);
+        // Wait for in-flight samples first: a late verdict may call kill() and replace
+        // `reaping`, so the reaping promise must be read only after both loops settled.
+        await Promise.allSettled([memoryLoop, diskLoop]);
+        await Promise.allSettled([reaping]);
         const log = Buffer.concat(chunks).toString("utf8");
         if (!failure && memoryVerdict) failure = memoryVerdict;
         if (!failure && code === 97) failure = "Could not apply OS resource limits to the compiler";
         // SIGXFSZ is the kernel enforcing RLIMIT_FSIZE from the prologue: the compiler tried
         // to write a single file past the per-file ceiling. Runtimes that ignore SIGXFSZ
-        // (Node does) instead see EFBIG and exit non-zero; map that too.
-        const perFile = `Compiler tried to write a file larger than the ${Math.round((options.hardLimits?.maxFileBytes ?? 0) / 1048576)} MiB per-file limit`;
-        if (!failure && options.hardLimits && (signal === "SIGXFSZ" || (code !== 0 && /EFBIG|File too large/i.test(log)))) failure = perFile;
+        // (Node does) fail with EFBIG instead; match only the runtime error line shapes
+        // ("Error: EFBIG: ..." / "code: 'EFBIG'" / "...: File too large"), not prose, and
+        // keep the generic exit reason so the attribution is visibly a probable cause.
+        const perFile = `${Math.round((options.hardLimits?.maxFileBytes ?? 0) / 1048576)} MiB per-file limit`;
+        if (!failure && signal === "SIGXFSZ") failure = `Compiler tried to write a file larger than the ${perFile}`;
+        if (!failure && options.hardLimits && code !== 0 && /(^|\n)[^\n]*\b(EFBIG\b|File too large\s*$)/m.test(log)) failure = `Tectonic failed (exit ${code}); the log reports EFBIG, most likely the ${perFile}`;
         if (!failure && signal) failure = `Compiler terminated by ${signal}`;
         // A burst that finished between samples must still be rejected.
         if (!failure && code === 0 && budget && (await directoryBytes(budget.directory, budget.maxDirectoryBytes)) > budget.maxDirectoryBytes) failure = diskMessage;

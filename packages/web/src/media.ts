@@ -37,10 +37,12 @@ const ASCII_WHITESPACE_RUN = /[\t\n\f\r ]+/;
 const ASCII_TRIM = /^[\t\n\f\r ]+|[\t\n\f\r ]+$/g;
 // Width: valid non-negative integer > 0 (leading zeros allowed by the integer grammar).
 const WIDTH_DESCRIPTOR = /^\d+w$/;
-// Density: valid floating-point number (digits with optional fraction, or ".digits",
-// optional exponent) followed by lowercase "x"; "1." has no fraction digits so it is
-// invalid, and the suffix is case-sensitive.
-const DENSITY_DESCRIPTOR = /^(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?x$/;
+// Density: valid floating-point number (optional "-", digits with optional fraction or
+// ".digits", optional exponent with "e" or "E") followed by lowercase "x"; "1." has no
+// fraction digits so it is invalid, and the "x" suffix is case-sensitive. A negative
+// value is rejected afterwards (spec: density < 0 is an error), so "-0x" parses and
+// passes while "-1x" is dropped.
+const DENSITY_DESCRIPTOR = /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?x$/;
 // Future-compat height descriptor: only meaningful next to a width descriptor.
 const HEIGHT_DESCRIPTOR = /^\d+h$/;
 

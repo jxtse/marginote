@@ -44,7 +44,9 @@ widening the sandbox. Open an issue with the log if you need a layout added.
   snapshot is limited to 5,000 supported files, 50,000 directory entries and 256 MiB;
   returned PDFs/assets are limited to 64 MiB. Before the compiler starts, the OS
   applies `RLIMIT_FSIZE` (exactly 128 MiB per file; the shell's `ulimit -f` unit is
-  probed once so the value is not off by 2×) and, on Linux, `RLIMIT_AS` (4 GiB) so
+  probed once by positively identifying KiB or 512-byte blocks, and if the probe cannot
+  decide the compiler is not started at all, returning `503 sandbox_unavailable`) and,
+  on Linux, `RLIMIT_AS` (4 GiB) so
   those ceilings hold at every instant. While it runs, two independent samplers poll
   every 250 ms: one sums the resident memory of every process still reachable from the
   compiler through the parent chain (so `bwrap --new-session` children are counted), the

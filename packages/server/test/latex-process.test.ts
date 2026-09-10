@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { runBounded, processTreeRss } from "../src/latex.js";
+import { runBounded, processTreeRss, resetUlimitUnitProbe } from "../src/latex.js";
 
 const base = { timeoutMs: 10_000, maxOutputBytes: 1024 };
 
@@ -56,6 +56,35 @@ it("enforces a per-file size hard limit through the OS before the compiler start
   expect(size).toBeLessThanOrEqual(2 << 20);
 }));
 
+it("refuses to start the compiler when the ulimit unit cannot be determined, and recovers once it can", () => withDir(async (dir) => {
+  // Probe with an unwritable directory: no positive identification -> fail closed, and
+  // the failure must not be cached.
+  const { mkdir, chmod } = await import("node:fs/promises");
+  const locked = join(dir, "locked");
+  await mkdir(locked);
+  await chmod(locked, 0o500);
+  resetUlimitUnitProbe();
+  try {
+    await expect(runBounded(process.execPath, ["-e", "console.log('ran')"], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20, probeDirectory: locked } })).rejects.toThrow(/resource limits/);
+    expect(await runBounded(process.execPath, ["-e", "console.log('ran')"], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20, probeDirectory: dir } })).toContain("ran");
+  } finally { await chmod(locked, 0o700); resetUlimitUnitProbe(); }
+}));
+
+it("waits for a late memory verdict's termination work before settling", () => withDir(async (dir) => {
+  const { writeFile, chmod } = await import("node:fs/promises");
+  const pidFile = join(dir, "child.pid");
+  const marker = join(dir, "ps-done");
+  const slowPs = join(dir, "ps");
+  // First call (RSS sample) is slow and over budget; second call (descendant enumeration
+  // for the kill) records a marker so the test can assert it finished before settlement.
+  await writeFile(slowPs, `#!/bin/sh\nif [ "$1" = "-eo" ] && [ "$2" = "pid=,ppid=,rss=" ]; then sleep 0.3; p="$(cat ${JSON.stringify(pidFile)} 2>/dev/null || echo 1)"; echo "$p 1 999999999"; else sleep 0.2; touch ${JSON.stringify(marker)}; fi\n`);
+  await chmod(slowPs, 0o755);
+  const script = `require("fs").writeFileSync(process.argv[1], String(process.pid)); setTimeout(()=>{},150)`;
+  await expect(runBounded(process.execPath, ["-e", script, pidFile], { ...base, cwd: dir, budget: { directory: dir, maxDirectoryBytes: 1 << 30, maxRssBytes: 64 << 20, intervalMs: 10, psCommand: slowPs } })).rejects.toThrow(/memory/);
+  const { access } = await import("node:fs/promises");
+  await expect(access(marker)).resolves.toBeUndefined();
+}));
+
 it("processTreeRss sums descendants found through the ppid chain", async () => {
   const rss = await processTreeRss(process.pid, "ps");
   expect(rss).toBeGreaterThan(1 << 20);
@@ -107,8 +136,6 @@ it("applies the exact per-file limit regardless of the shell's ulimit unit", () 
   const over = `require("fs").writeFileSync(process.argv[1]+"/over", Buffer.alloc((1<<20)+4096))`;
   await expect(runBounded(process.execPath, ["-e", over, dir], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).rejects.toThrow(/per-file limit/);
   const { stat } = await import("node:fs/promises");
-  const size = (await stat(join(dir, "over"))).size;
-  // Exactly the limit, modulo the last partial write the kernel may let through (< 1 page).
-  expect(size).toBeGreaterThanOrEqual(1 << 20);
-  expect(size).toBeLessThan((1 << 20) + 4096 + 1);
+  // The kernel stops the write exactly at RLIMIT_FSIZE.
+  expect((await stat(join(dir, "over"))).size).toBe(1 << 20);
 }));
