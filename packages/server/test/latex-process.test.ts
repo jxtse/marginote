@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { ULIMIT_PROBE, runBounded, processTreeRss, resetUlimitUnitProbe } from "../src/latex.js";
+import { ULIMIT_PROBE_NODE, runBounded, processTreeRss, resetUlimitUnitProbe } from "../src/latex.js";
 
 const base = { timeoutMs: 10_000, maxOutputBytes: 1024 };
 
@@ -98,28 +98,30 @@ it("does not attribute an unrelated failure to the per-file limit because prose 
   await expect(runBounded(process.execPath, ["-e", real], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).rejects.toThrow(/most likely the 1 MiB per-file limit/);
 }));
 
-it("ulimit unit probe reports unknown, not blocks, when the write fails for a reason other than RLIMIT_FSIZE", () => withDir(async (dir) => {
-  // Drive the exact probe script with a directory whose only writable entry is a
-  // pre-existing 0-byte file at the probe's name: the 1024-byte write fails (EACCES on
-  // an r-- file) leaving size 0, which must NOT be read as blocks (that needs exactly
-  // 512 bytes, the kernel's RLIMIT_FSIZE truncation fingerprint).
-  const { writeFile, chmod } = await import("node:fs/promises");
+it("ulimit unit probe reports unknown unless the kernel itself signals RLIMIT_FSIZE", () => withDir(async (dir) => {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
+  const { writeFile, chmod, readdir } = await import("node:fs/promises");
   const run = promisify(execFile);
-  // The script names its file marginote-ulimit-probe.$$; run it via a wrapper that fixes
-  // $$ by exec'ing with a known pid is not portable, so instead read the script's
-  // behaviour through its exported constant with `$$` substituted for a fixed token.
-  const script = ULIMIT_PROBE.replace(/\$\$/g, "fixed");
-  const probeFile = join(dir, "marginote-ulimit-probe.fixed");
-  await writeFile(probeFile, "");
-  await chmod(probeFile, 0o400);
-  // The script's EXIT trap removes the probe file itself, so no cleanup is needed here.
-  const first = await run("/bin/sh", ["-c", script, "probe", dir]);
-  expect(first.stdout.trim()).toBe("unknown");
-  // Sanity: with a writable directory the same script gives a definite answer.
-  const second = await run("/bin/sh", ["-c", script, "probe", dir]);
-  expect(["kib", "blocks"]).toContain(second.stdout.trim());
+  const probe = (limit: string, directory: string) => run("/bin/sh", ["-c", `ulimit -f ${limit} || { echo unknown; exit 0; }; exec "$1" -e "$2" "$3"`, "probe", process.execPath, ULIMIT_PROBE_NODE, directory]).then((r) => r.stdout.trim());
+  // Kernel fingerprint present: definite answer, and the probe file is removed.
+  expect(["kib", "blocks"]).toContain(await probe("1", dir));
+  // Limit large enough that the follow-up write does not hit EFBIG: no fingerprint -> unknown,
+  // even though 1024 bytes were written successfully.
+  expect(await probe("2", dir)).toBe("unknown");
+  // Unlimited: same.
+  expect(await probe("unlimited", dir)).toBe("unknown");
+  // Reviewer counterexample: a pre-existing read-only 512-byte file at every plausible
+  // name cannot be arranged (the name is randomised), but O_EXCL means any pre-existing
+  // file is EEXIST -> unknown rather than a size read from stale content. Simulate the
+  // class by making the directory unwritable: open fails -> unknown.
+  const locked = join(dir, "locked");
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(locked);
+  await writeFile(join(locked, "decoy"), Buffer.alloc(512));
+  await chmod(locked, 0o500);
+  try { expect(await probe("1", locked)).toBe("unknown"); } finally { await chmod(locked, 0o700); }
+  expect((await readdir(dir)).filter((name) => name.startsWith("marginote-ulimit-probe."))).toEqual([]);
 }));
 
 it("terminates idempotently: a flood of over-limit log chunks spawns at most one ps enumeration", () => withDir(async (dir) => {

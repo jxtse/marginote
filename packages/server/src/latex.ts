@@ -203,29 +203,32 @@ const RLIMIT_PROLOGUE = [
 
 /**
  * Cached result of detecting whether /bin/sh's `ulimit -f` counts 512-byte blocks.
- * Only a positive identification is cached, and each verdict requires the kernel's own
- * fingerprint under `ulimit -f 1`, using a single 1024-byte write:
- *   - the write succeeds and the file measures exactly 1024 bytes  -> KiB;
- *   - the write fails and the file measures exactly 512 bytes      -> blocks
- *     (RLIMIT_FSIZE truncates at the limit; a transient EIO/ENOSPC/open failure leaves
- *     0 bytes or no file and therefore cannot be mistaken for blocks).
- * Anything else is "unknown", is NOT cached, and callers refuse to start the compiler.
+ * The verdict comes from the kernel, not from a file size: under `ulimit -f 1` a fresh
+ * O_EXCL file is written with a single 1024-byte write(2); the kernel returns the number
+ * of bytes it allowed (a short write at exactly the limit), and the very next 1-byte
+ * write must fail with errno EFBIG. Only the pair (short count, EFBIG) identifies
+ * RLIMIT_FSIZE: 1024 -> KiB, 512 -> blocks. Any other count, any other errno
+ * (ENOSPC/EIO/EACCES/EEXIST...), or a missing EFBIG on the follow-up write is
+ * "unknown", is NOT cached, and callers refuse to start the compiler.
  */
 let ulimitUnitProbe: Promise<"blocks" | "kib" | "unknown"> | undefined;
-export const ULIMIT_PROBE = [
-  'd="$1"; a="$d/marginote-ulimit-probe.$$"',
-  'trap \'rm -f "$a"\' EXIT',
-  'ulimit -f 1 || { echo unknown; exit 0; }',
-  'if head -c 1024 /dev/zero > "$a" 2>/dev/null; then ok=1; else ok=0; fi',
-  'size="$(wc -c < "$a" 2>/dev/null | tr -d " ")"',
-  'if [ "$ok" = 1 ] && [ "$size" = 1024 ]; then echo kib; exit 0; fi',
-  'if [ "$ok" = 0 ] && [ "$size" = 512 ]; then echo blocks; exit 0; fi',
-  "echo unknown",
-].join("; ");
+export const ULIMIT_PROBE_NODE = [
+  'const fs = require("node:fs");',
+  'const path = process.argv[1] + "/marginote-ulimit-probe." + process.pid + "." + Math.random().toString(36).slice(2);',
+  "let fd; let written = -1; let verdict = \"unknown\";",
+  "try {",
+  '  fd = fs.openSync(path, "wx", 0o600);',
+  "  try { written = fs.writeSync(fd, Buffer.alloc(1024, 1)); } catch (e) { if (e && e.code === \"EFBIG\") written = 0; else throw e; }",
+  "  let second = null; try { fs.writeSync(fd, Buffer.alloc(1)); } catch (e) { second = e && e.code; }",
+  '  if (second === "EFBIG" && fs.fstatSync(fd).size === written) verdict = written === 1024 ? "kib" : written === 512 ? "blocks" : "unknown";',
+  "} catch {} finally { try { if (fd !== undefined) fs.closeSync(fd); } catch {} try { fs.unlinkSync(path); } catch {} }",
+  "process.stdout.write(verdict);",
+].join("\n");
+export const ULIMIT_PROBE = 'ulimit -f 1 || { echo unknown; exit 0; }; exec "$1" -e "$2" "$3"';
 function detectUlimitUnit(probeDirectory: string): Promise<"blocks" | "kib" | "unknown"> {
   if (ulimitUnitProbe) return ulimitUnitProbe;
   const attempt = new Promise<"blocks" | "kib" | "unknown">((resolve) => {
-    execFile("/bin/sh", ["-c", ULIMIT_PROBE, "probe", probeDirectory], { timeout: 5_000 }, (error, stdout) => {
+    execFile("/bin/sh", ["-c", ULIMIT_PROBE, "probe", process.execPath, ULIMIT_PROBE_NODE, probeDirectory], { timeout: 10_000 }, (error, stdout) => {
       const answer = error ? "unknown" : stdout.trim();
       resolve(answer === "kib" || answer === "blocks" ? answer : "unknown");
     });
