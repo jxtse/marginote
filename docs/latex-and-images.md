@@ -20,6 +20,14 @@ downloads TeX packages nor silently falls back to unrestricted execution. Tecton
 and the OS isolation utility are external runtime prerequisites, not npm binaries.
 All JavaScript and highlighting assets ship through `npm run build:release`.
 
+On macOS the sandbox read allow-list is fixed to the Tectonic binary found on PATH
+plus the Homebrew dynamic libraries it links against under `/opt/homebrew` (ICU,
+HarfBuzz, FreeType, Graphite2, libpng, GLib, gettext, PCRE2), resolved to their real
+`Cellar` paths at compile time. Apple-silicon Homebrew is the supported layout.
+Other layouts (Intel Homebrew under `/usr/local`, MacPorts, a static build) are not
+granted automatically: the compile fails with a `dyld` "Library not loaded" log
+rather than widening the sandbox. Open an issue with the log if you need one added.
+
 ## API and limits
 
 - `POST /api/latex?doc=manuscript%2Fmain.tex` flushes the live vault projection,
@@ -32,8 +40,11 @@ All JavaScript and highlighting assets ship through `npm run build:release`.
   requester disconnects (navigation, edit debounce, tab close) the compiler is killed
   so an abandoned job cannot hold the slot.
 - Compilation has a 120-second timeout and 256 KiB stdout/stderr ceiling. A project
-  snapshot is limited to 5,000 supported files and 256 MiB; returned PDFs/assets are
-  limited to 64 MiB. Server shutdown cancels compilation.
+  snapshot is limited to 5,000 supported files, 50,000 directory entries and 256 MiB;
+  returned PDFs/assets are limited to 64 MiB. While the compiler runs, its output
+  directory (also its `TMPDIR`) and the resident memory of its process group are
+  sampled every 250 ms; exceeding 512 MiB of generated data or 2 GiB RSS kills the
+  whole job. Server shutdown cancels compilation and waits for temp cleanup.
 - Errors are JSON `{ code, error, log }`; missing files return `404`, invalid paths
   `400`, compiler failures `422`, and missing runtimes `503`. Logs render as text,
   never HTML. Existing host/origin checks apply to both APIs.

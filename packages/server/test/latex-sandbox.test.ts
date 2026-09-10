@@ -4,7 +4,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { tectonicCompiler } from "../src/latex.js";
+import { latexRuntimePaths, tectonicCompiler } from "../src/latex.js";
 
 const spawn = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ spawn }));
@@ -55,6 +55,24 @@ it("invokes an OS sandbox with offline untrusted argv and a bounded runner", asy
       expect(command).toMatch(/bwrap$/);
       expect(args).toContain("--unshare-all");
       expect(args).toContain("--ro-bind");
+      const binds = args.filter((_: string, index: number) => args[index - 1] === "--ro-bind");
+      expect(binds).not.toContain("/usr");
+      expect(binds).not.toContain("/opt");
     }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+it("reports a missing sandbox-exec as an unavailable runtime, not a compile failure", async () => {
+  if (process.platform !== "darwin") return;
+  const directory = await mkdtemp(join(tmpdir(), "marginote-fake-compiler-"));
+  try {
+    await writeFile(join(directory, "tectonic"), "fake", { mode: 0o700 });
+    vi.stubEnv("PATH", directory);
+    const original = latexRuntimePaths.sandboxExec;
+    latexRuntimePaths.sandboxExec = join(directory, "missing-sandbox-exec");
+    try {
+      await expect(tectonicCompiler({ root: "/vault", entryPath: "/vault/main.tex", outputDir: "/tmp/out", signal: new AbortController().signal })).rejects.toMatchObject({ status: 503, code: "sandbox_unavailable" });
+      expect(spawn).not.toHaveBeenCalled();
+    } finally { latexRuntimePaths.sandboxExec = original; }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
-import { constants } from "node:fs";
+import { access, lstat, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { constants, type Dirent } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, extname, join } from "node:path";
 import type { Vault } from "@marginote/bridge";
@@ -21,10 +21,12 @@ const SNAPSHOT_EXTENSIONS = new Set([
 ]);
 const SNAPSHOT_MAX_FILES = 5_000;
 const SNAPSHOT_MAX_BYTES = 256 * 1024 * 1024;
+const SNAPSHOT_MAX_ENTRIES = 50_000;
 
-async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entryName: string): Promise<{ entryPath: string; entryHash: string }> {
+async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entryName: string, signal?: AbortSignal): Promise<{ entryPath: string; entryHash: string }> {
   let files = 0;
   let bytes = 0;
+  let visited = 0;
   let entryHash = "";
   const copyDirectory = async (relativeDir: string): Promise<void> => {
     const sourceDir = relativeDir ? join(liveRoot, relativeDir) : liveRoot;
@@ -32,6 +34,10 @@ async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entr
     await mkdir(targetDir, { recursive: true });
     const entries = await readdir(sourceDir, { withFileTypes: true });
     for (const entry of entries) {
+      if (signal?.aborted) throw new MediaError("Compilation cancelled", 422, "compile_failed");
+      // Every directory entry counts, not only copied files, so a tree of unsupported or
+      // empty directories cannot turn the snapshot walk into an unbounded scan.
+      if (++visited > SNAPSHOT_MAX_ENTRIES) throw new MediaError("LaTeX project directory has too many entries to snapshot", 413, "project_limit");
       if ([".git", ".marginote", "node_modules"].includes(entry.name)) continue;
       const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) throw new MediaError(`LaTeX snapshot does not follow symlink: ${relativePath}`, 400, "invalid_path");
@@ -53,14 +59,57 @@ async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entr
   return { entryPath: join(snapshotRoot, entryName), entryHash };
 }
 
+/**
+ * Per-compilation resource budget enforced by a poller while the compiler runs. Wall
+ * time and log size alone do not stop a hostile TeX file from filling the disk with
+ * auxiliary output or ballooning XeTeX memory inside the 120 s window, so the
+ * output directory size and the process tree's resident memory are sampled every
+ * `intervalMs` and the whole process group is killed when either limit is crossed.
+ */
+export interface ResourceBudget {
+  directory: string;
+  maxDirectoryBytes: number;
+  maxRssBytes: number;
+  intervalMs?: number;
+}
+
+async function directoryBytes(root: string): Promise<number> {
+  let total = 0;
+  const pending = [root];
+  while (pending.length) {
+    const directory = pending.pop()!;
+    let entries: Dirent[];
+    try { entries = await readdir(directory, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile()) { try { total += (await lstat(path)).size; } catch {} }
+    }
+  }
+  return total;
+}
+
+/** Resident memory (bytes) of a process group, via `ps` because Node exposes no getrusage for children. */
+function processGroupRss(pgid: number): Promise<number> {
+  return new Promise((resolve) => {
+    execFile("ps", ["-o", "rss=", "-g", String(pgid)], { timeout: 2_000 }, (error, stdout) => {
+      if (error) { resolve(0); return; }
+      let kib = 0;
+      for (const line of stdout.split("\n")) { const value = Number.parseInt(line.trim(), 10); if (Number.isFinite(value)) kib += value; }
+      resolve(kib * 1024);
+    });
+  });
+}
+
 export function runBounded(command: string, args: string[], options: {
-  cwd: string; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv;
+  cwd: string; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv; budget?: ResourceBudget;
 }): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: options.cwd, env: options.env, shell: false, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     const chunks: Buffer[] = [];
     let bytes = 0;
     let failure = "";
+    let closed = false;
     const kill = (reason: string): void => {
       failure ||= reason;
       try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL"); else child.kill("SIGKILL"); } catch { child.kill("SIGKILL"); }
@@ -69,6 +118,21 @@ export function runBounded(command: string, args: string[], options: {
     const abort = (): void => kill("Compilation cancelled");
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const budget = options.budget;
+    if (budget && child.pid && process.platform !== "win32") {
+      const pid = child.pid;
+      const interval = budget.intervalMs ?? 250;
+      const sample = async (): Promise<void> => {
+        if (closed || failure) return;
+        const [disk, rss] = await Promise.all([directoryBytes(budget.directory), processGroupRss(pid)]);
+        if (closed || failure) return;
+        if (disk > budget.maxDirectoryBytes) kill(`Compiler generated more than ${Math.round(budget.maxDirectoryBytes / 1048576)} MiB of output`);
+        else if (rss > budget.maxRssBytes) kill(`Compiler exceeded the ${Math.round(budget.maxRssBytes / 1048576)} MiB memory budget`);
+        else watchdog = setTimeout(() => { void sample(); }, interval);
+      };
+      watchdog = setTimeout(() => { void sample(); }, interval);
+    }
     const receive = (chunk: Buffer): void => {
       const remaining = Math.max(0, options.maxOutputBytes - bytes);
       chunks.push(chunk.subarray(0, remaining));
@@ -79,7 +143,9 @@ export function runBounded(command: string, args: string[], options: {
     child.stderr.on("data", receive);
     child.on("error", (error: NodeJS.ErrnoException) => { failure = error.code === "ENOENT" ? "Tectonic or sandbox executable not found; install the required runtime" : error.message; });
     child.on("close", (code) => {
+      closed = true;
       clearTimeout(timer);
+      clearTimeout(watchdog);
       options.signal?.removeEventListener("abort", abort);
       const log = Buffer.concat(chunks).toString("utf8");
       if (failure || code !== 0) reject(new MediaError(failure || `Tectonic failed (exit ${code}); check compiler log`, 422, "compile_failed", log));
@@ -97,6 +163,9 @@ async function executable(name: string): Promise<string> {
   throw new MediaError(`${name} not found on PATH; install it to enable secure LaTeX preview`, 503, "runtime_missing");
 }
 
+/** Fixed sandbox binary; overridable only by tests via `latexRuntimePaths` to simulate absence. */
+export const latexRuntimePaths = { sandboxExec: "/usr/bin/sandbox-exec" };
+
 export const tectonicCompiler: LatexCompiler = async ({ root, entryPath, outputDir, signal }) => {
   const tectonic = await executable("tectonic");
   const cache = process.platform === "darwin"
@@ -107,7 +176,9 @@ export const tectonicCompiler: LatexCompiler = async ({ root, entryPath, outputD
   let command: string;
   let sandboxArgs: string[];
   if (process.platform === "darwin") {
-    command = "/usr/bin/sandbox-exec";
+    command = latexRuntimePaths.sandboxExec;
+    try { await access(command, constants.X_OK); }
+    catch { throw new MediaError("macOS sandbox-exec is unavailable; secure LaTeX preview is disabled", 503, "sandbox_unavailable"); }
     const quote = (path: string): string => JSON.stringify(path);
     // Allow only the selected vault, compiler cache, output directory, and immutable
     // system/runtime trees. The literal root access is needed for Tectonic's startup
@@ -143,7 +214,13 @@ export const tectonicCompiler: LatexCompiler = async ({ root, entryPath, outputD
     }
     sandboxArgs.push("--chdir", dirname(entryPath), "--", tectonic, ...args);
   } else throw new MediaError("Secure LaTeX preview requires macOS sandbox-exec or Linux bubblewrap", 503, "sandbox_unavailable");
-  return runBounded(command, sandboxArgs, { cwd: dirname(entryPath), timeoutMs: 120_000, maxOutputBytes: 256 * 1024, signal, env });
+  return runBounded(command, sandboxArgs, {
+    cwd: dirname(entryPath), timeoutMs: 120_000, maxOutputBytes: 256 * 1024, signal, env,
+    // TMPDIR is pointed at outputDir and the sandbox only permits writes there, so its
+    // size is the compiler's total generated data. 2 GiB RSS is generous for XeTeX on a
+    // real paper (tens of MiB) while still stopping a runaway allocation loop.
+    budget: { directory: outputDir, maxDirectoryBytes: 512 * 1024 * 1024, maxRssBytes: 2 * 1024 * 1024 * 1024 },
+  });
 };
 
 export class LatexRenderer {
@@ -197,7 +274,7 @@ export class LatexRenderer {
       const outputDir = join(temporaryRoot, "output");
       await mkdir(outputDir);
       const liveProjectRoot = await realpath(dirname(entryPath));
-      const snapshot = await snapshotLatexProject(liveProjectRoot, snapshotRoot, basename(entryPath));
+      const snapshot = await snapshotLatexProject(liveProjectRoot, snapshotRoot, basename(entryPath), signal);
       if (signal.aborted) throw new MediaError("Compilation cancelled", 422, "compile_failed");
       const log = await this.compiler({ root: snapshotRoot, entryPath: snapshot.entryPath, outputDir, signal });
       let pdf: Buffer;
@@ -213,6 +290,8 @@ export class LatexRenderer {
 
   async close(): Promise<void> {
     this.abort.abort();
-    await Promise.allSettled(this.active.values());
+    // Wait for the compile promises themselves, not the bookkeeping wrappers, so that
+    // temporary snapshot/output directories are removed before the process exits.
+    await Promise.allSettled([...this.active.values()].map((entry) => entry.task));
   }
 }

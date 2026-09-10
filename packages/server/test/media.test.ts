@@ -100,6 +100,26 @@ it("cancels a compilation whose client disconnected and frees the slot for the n
   expect((await request("paper/section.tex", "latex")).status).toBe(200);
 });
 
+it("close() waits for the running compilation to finish its cleanup before resolving", async () => {
+  let finishCleanup!: () => void;
+  const cleanedUp = new Promise<void>((resolve) => { finishCleanup = resolve; });
+  let compilerAborted = false;
+  compiler.mockImplementation(({ signal }) => new Promise((_, reject) => {
+    signal.addEventListener("abort", () => { compilerAborted = true; void cleanedUp.then(() => reject(new Error("Compilation cancelled"))); }, { once: true });
+  }));
+  const inflight = request("paper/main.tex", "latex");
+  await vi.waitFor(() => expect(compiler).toHaveBeenCalledTimes(1));
+  let closed = false;
+  const closing = server.close().then(() => { closed = true; });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(compilerAborted).toBe(true);
+  expect(closed).toBe(false);
+  finishCleanup();
+  await closing;
+  expect(closed).toBe(true);
+  expect((await inflight).status).toBe(422);
+});
+
 it("keeps included TeX sources immutable while the live project changes", async () => {
   compiler.mockImplementation(async ({ outputDir, entryPath }) => {
     await writeFile(join(root, "paper/section.tex"), "changed during compile");

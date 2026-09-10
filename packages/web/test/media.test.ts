@@ -33,4 +33,9 @@ it("rewrites responsive srcset candidates through the asset API and drops unsafe
   expect(rewriteSrcset("https://cdn.example/a.png 480w, ./b.webp 960w", "paper/main.md")).toBe("https://cdn.example/a.png 480w, /api/assets?path=paper%2Fb.webp 960w");
   expect(rewriteSrcset("../secret.png 1x, javascript:alert(1) 2x", "paper/main.md")).toBe("");
   expect(rewriteSrcset("../secret.png 1x, ok.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fok.png 2x");
+  // HTML srcset grammar: a comma with no following whitespace is part of the URL, and
+  // a data: URL may legitimately contain commas.
+  expect(rewriteSrcset("a.png,b.png", "paper/main.md")).toBe("/api/assets?path=paper%2Fa.png%2Cb.png");
+  expect(rewriteSrcset("data:image/png;base64,AAAA 1x, b.png 2x", "paper/main.md")).toBe("data:image/png;base64,AAAA 1x, /api/assets?path=paper%2Fb.png 2x");
+  expect(rewriteSrcset("a.png 1x,b.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fa.png 1x, /api/assets?path=paper%2Fb.png 2x");
 });

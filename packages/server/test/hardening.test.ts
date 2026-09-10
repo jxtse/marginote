@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { MarginoteServer } from "../src/index.js";
 import { buildLinkGraph } from "../src/links.js";
-import { searchVault } from "../src/search.js";
+import { searchDocuments, searchVault } from "../src/search.js";
 
 const exec = promisify(execFile);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -222,6 +222,14 @@ describe("search and links robustness", () => {
     // server trusts that result and never consults the in-process fallback.
     expect(results.some((r) => r.path === "notes.md")).toBe(true);
     expect(results.some((r) => r.path === "paper.tex")).toBe(true);
+    // Pin both engines explicitly rather than whichever this machine happens to select.
+    const viaRipgrep = await searchVault(dir, "Zebra-lemma-unique", 10);
+    if (viaRipgrep.engine === "ripgrep") expect(viaRipgrep.results.map((r) => r.path).sort()).toEqual(["notes.md", "paper.tex"]);
+    const fallback = searchDocuments(
+      [{ path: "paper.tex", text: "\\section{Zebra-lemma-unique}" }, { path: "notes.md", text: "Zebra-lemma-unique in Markdown" }],
+      "Zebra-lemma-unique",
+    );
+    expect(fallback.map((r) => r.path).sort()).toEqual(["notes.md", "paper.tex"]);
   });
 
   it("ignores self-links and resolves cycles", () => {
