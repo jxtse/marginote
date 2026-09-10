@@ -35,13 +35,13 @@ async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entr
     // Node's readdir reads a directory in one call; bounding here is what keeps a single
     // enormous directory from consuming the whole entry budget before any check runs.
     const entries = await readdir(sourceDir, { withFileTypes: true });
-    if (visited + entries.length > SNAPSHOT_MAX_ENTRIES) throw new MediaError("LaTeX project directory has too many entries to snapshot", 413, "project_limit");
+    // Reserve this directory's entries up front so a deep subtree cannot spend the
+    // budget that the remaining entries of its parent still need.
+    visited += entries.length;
+    if (visited > SNAPSHOT_MAX_ENTRIES) throw new MediaError("LaTeX project directory has too many entries to snapshot", 413, "project_limit");
     await mkdir(targetDir, { recursive: true });
     for (const entry of entries) {
       if (signal?.aborted) throw new MediaError("Compilation cancelled", 422, "compile_failed");
-      // Every directory entry counts, not only copied files, so a tree of unsupported or
-      // empty directories cannot turn the snapshot walk into an unbounded scan.
-      visited++;
       if ([".git", ".marginote", "node_modules"].includes(entry.name)) continue;
       const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) throw new MediaError(`LaTeX snapshot does not follow symlink: ${relativePath}`, 400, "invalid_path");
@@ -95,17 +95,24 @@ export interface HardLimits {
 
 const SCAN_MAX_ENTRIES = 20_000;
 
-/** Total size of regular files under `root`, stopping early once `limit` is exceeded or the scan itself grows too large. */
-async function directoryBytes(root: string, limit: number): Promise<number> {
+/**
+ * Total size of regular files under `root`. Stops early once `limit` is exceeded, once
+ * the scan itself passes SCAN_MAX_ENTRIES (reported as infinite), or when `stop()` says
+ * the caller no longer needs the answer, so a scan can never outlive the job by much.
+ */
+async function directoryBytes(root: string, limit: number, stop: () => boolean = () => false): Promise<number> {
   let total = 0;
   let visited = 0;
   const pending = [root];
   while (pending.length) {
+    if (stop()) return total;
     const directory = pending.pop()!;
     let entries: Dirent[];
     try { entries = await readdir(directory, { withFileTypes: true }); } catch { continue; }
+    visited += entries.length;
+    if (visited > SCAN_MAX_ENTRIES) return Number.POSITIVE_INFINITY;
     for (const entry of entries) {
-      if (++visited > SCAN_MAX_ENTRIES) return Number.POSITIVE_INFINITY;
+      if (stop()) return total;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) pending.push(path);
       else if (entry.isFile()) {
@@ -178,31 +185,60 @@ function descendantPids(rootPid: number, psCommand = "ps"): Promise<number[]> {
  * Constant shell prologue that applies rlimits then execs the real command. The script
  * text never changes; limits and the command arrive as positional parameters, so this
  * is not a shell-injection surface. `ulimit -v` is a no-op on macOS but harmless.
+ *
+ * `ulimit -f` units differ between shells (512-byte blocks on BSD sh/bash, 1 KiB on
+ * some others). The unit is probed once per process (`detectUlimitUnit`) and passed as
+ * `$3`; the prologue converts the KiB request accordingly, sets the limit, reads it back
+ * and refuses to continue (exit 97) if the kernel did not accept exactly that value.
  */
-const RLIMIT_PROLOGUE = 'ulimit -f "$1" || exit 97; if [ "$2" != "-" ]; then ulimit -v "$2" || exit 97; fi; shift 2; exec "$@"';
+const RLIMIT_PROLOGUE = [
+  'if [ "$3" = "blocks" ]; then want="$(( $1 * 2 ))"; else want="$1"; fi',
+  'ulimit -f "$want" || exit 97',
+  'got="$(ulimit -f)"; [ "$got" = "$want" ] || exit 97',
+  'if [ "$2" != "-" ]; then ulimit -v "$2" || exit 97; fi',
+  'shift 3; exec "$@"',
+].join("; ");
+
+/** Cached result of detecting whether /bin/sh's `ulimit -f` counts 512-byte blocks. */
+let ulimitUnitProbe: Promise<"blocks" | "kib"> | undefined;
+function detectUlimitUnit(): Promise<"blocks" | "kib"> {
+  ulimitUnitProbe ??= new Promise((resolve) => {
+    // Under `ulimit -f 1`, writing 1024 bytes succeeds only if the unit is KiB. The probe
+    // file is removed by the same shell; SIGXFSZ on the head(1) child is the failure signal.
+    execFile("/bin/sh", ["-c", 'f="$1/marginote-ulimit-probe.$$"; ulimit -f 1; if head -c 1024 /dev/zero > "$f" 2>/dev/null; then echo kib; else echo blocks; fi; rm -f "$f"', "probe", tmpdir()], { timeout: 5_000 }, (error, stdout) => {
+      resolve(!error && stdout.trim() === "kib" ? "kib" : "blocks");
+    });
+  });
+  return ulimitUnitProbe;
+}
 
 export function runBounded(command: string, args: string[], options: {
   cwd: string; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv; budget?: ResourceBudget; hardLimits?: HardLimits;
 }): Promise<string> {
   return new Promise((resolve, reject) => {
+    void (async () => {
     let executable = command;
     let argv = args;
     if (options.hardLimits && process.platform !== "win32") {
-      // ulimit -f counts 512-byte blocks on BSD/macOS sh and KiB on some Linux shells;
-      // KiB is the larger unit, so use it and accept a ≤2× slack on BSD rather than risk
-      // a cap smaller than a legitimate PDF.
       const fileKib = Math.max(1, Math.ceil(options.hardLimits.maxFileBytes / 1024));
       const addressKib = options.hardLimits.maxAddressSpaceBytes && process.platform === "linux" ? String(Math.ceil(options.hardLimits.maxAddressSpaceBytes / 1024)) : "-";
+      const unit = await detectUlimitUnit();
       executable = "/bin/sh";
-      argv = ["-c", RLIMIT_PROLOGUE, "marginote-rlimit", String(fileKib), addressKib, command, ...args];
+      argv = ["-c", RLIMIT_PROLOGUE, "marginote-rlimit", String(fileKib), addressKib, unit, command, ...args];
     }
     const child = spawn(executable, argv, { cwd: options.cwd, env: options.env, shell: false, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     const chunks: Buffer[] = [];
     let bytes = 0;
     let failure = "";
     let closed = false;
+    let terminating = false;
     let reaping: Promise<void> = Promise.resolve();
+    // Idempotent: the first caller records the reason and starts exactly one
+    // enumerate-then-kill pass; later callers (e.g. every further log chunk after the
+    // output cap) only ever observe the flag.
     const kill = (reason: string): void => {
+      if (terminating) return;
+      terminating = true;
       failure ||= reason;
       const pid = child.pid;
       if (pid && process.platform !== "win32") {
@@ -221,34 +257,43 @@ export function runBounded(command: string, args: string[], options: {
     const abort = (): void => kill("Compilation cancelled");
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();
-    let watchdog: ReturnType<typeof setTimeout> | undefined;
-    let sampling: Promise<void> = Promise.resolve();
     const budget = options.budget;
     const diskMessage = budget ? `Compiler generated more than ${Math.round(budget.maxDirectoryBytes / 1048576)} MiB of output` : "";
+    const memoryMessage = budget ? `Compiler exceeded the ${Math.round(budget.maxRssBytes / 1048576)} MiB memory budget` : "";
+    // Two independent sampling loops so a slow directory scan never delays a memory
+    // verdict. Each loop reschedules only itself; both stop once the child has closed.
+    let memoryTimer: ReturnType<typeof setTimeout> | undefined;
+    let diskTimer: ReturnType<typeof setTimeout> | undefined;
+    let memoryLoop: Promise<void> = Promise.resolve();
+    let diskLoop: Promise<void> = Promise.resolve();
+    // A sample that observed an over-budget RSS while the child was alive is a verdict
+    // even if the answer arrives after the child exited; it must not be dropped.
+    let memoryVerdict = "";
     if (budget && child.pid && process.platform !== "win32") {
       const pid = child.pid;
       const interval = budget.intervalMs ?? 250;
-      // Memory and disk are checked independently so a slow directory scan can never
-      // delay killing a process that is already over its memory budget.
-      const checkMemory = async (): Promise<void> => {
-        let rss: number;
-        try { rss = await processTreeRss(pid, budget.psCommand); }
-        catch (error) { if (!closed) kill(`Compiler memory accounting failed (${error instanceof Error ? error.message : String(error)}); refusing to run unbounded`); return; }
-        if (!closed && rss > budget.maxRssBytes) kill(`Compiler exceeded the ${Math.round(budget.maxRssBytes / 1048576)} MiB memory budget`);
+      const memoryTick = async (): Promise<void> => {
+        if (closed || terminating) return;
+        try {
+          const rss = await processTreeRss(pid, budget.psCommand);
+          if (rss > budget.maxRssBytes) { memoryVerdict ||= memoryMessage; kill(memoryMessage); return; }
+        } catch (error) {
+          if (!closed) { const message = `Compiler memory accounting failed (${error instanceof Error ? error.message : String(error)}); refusing to run unbounded`; memoryVerdict ||= message; kill(message); }
+          return;
+        }
+        if (!closed && !terminating) memoryTimer = setTimeout(() => { memoryLoop = memoryTick(); }, interval);
       };
-      const checkDisk = async (): Promise<void> => {
-        const disk = await directoryBytes(budget.directory, budget.maxDirectoryBytes);
-        if (!closed && disk > budget.maxDirectoryBytes) kill(diskMessage);
+      const diskTick = async (): Promise<void> => {
+        if (closed || terminating) return;
+        const disk = await directoryBytes(budget.directory, budget.maxDirectoryBytes, () => closed || terminating);
+        if (!closed && disk > budget.maxDirectoryBytes) { kill(diskMessage); return; }
+        if (!closed && !terminating) diskTimer = setTimeout(() => { diskLoop = diskTick(); }, interval);
       };
-      const sample = async (): Promise<void> => {
-        if (closed || failure) return;
-        sampling = Promise.allSettled([checkMemory(), checkDisk()]).then(() => {});
-        await sampling;
-        if (!closed && !failure) watchdog = setTimeout(() => { void sample(); }, interval);
-      };
-      watchdog = setTimeout(() => { void sample(); }, interval);
+      memoryTimer = setTimeout(() => { memoryLoop = memoryTick(); }, interval);
+      diskTimer = setTimeout(() => { diskLoop = diskTick(); }, interval);
     }
     const receive = (chunk: Buffer): void => {
+      if (terminating) return;
       const remaining = Math.max(0, options.maxOutputBytes - bytes);
       chunks.push(chunk.subarray(0, remaining));
       bytes += chunk.length;
@@ -260,15 +305,21 @@ export function runBounded(command: string, args: string[], options: {
     child.on("close", (code, signal) => {
       closed = true;
       clearTimeout(timer);
-      clearTimeout(watchdog);
+      clearTimeout(memoryTimer);
+      clearTimeout(diskTimer);
       options.signal?.removeEventListener("abort", abort);
       const finish = async (): Promise<void> => {
-        await Promise.allSettled([sampling, reaping]);
+        // Wait for in-flight work so a late over-budget answer is still counted and no
+        // ps/scan outlives the job unobserved.
+        await Promise.allSettled([memoryLoop, diskLoop, reaping]);
         const log = Buffer.concat(chunks).toString("utf8");
+        if (!failure && memoryVerdict) failure = memoryVerdict;
         if (!failure && code === 97) failure = "Could not apply OS resource limits to the compiler";
         // SIGXFSZ is the kernel enforcing RLIMIT_FSIZE from the prologue: the compiler tried
-        // to write a single file past the per-file ceiling.
-        if (!failure && signal === "SIGXFSZ") failure = `Compiler tried to write a file larger than the ${Math.round((options.hardLimits?.maxFileBytes ?? 0) / 1048576)} MiB per-file limit`;
+        // to write a single file past the per-file ceiling. Runtimes that ignore SIGXFSZ
+        // (Node does) instead see EFBIG and exit non-zero; map that too.
+        const perFile = `Compiler tried to write a file larger than the ${Math.round((options.hardLimits?.maxFileBytes ?? 0) / 1048576)} MiB per-file limit`;
+        if (!failure && options.hardLimits && (signal === "SIGXFSZ" || (code !== 0 && /EFBIG|File too large/i.test(log)))) failure = perFile;
         if (!failure && signal) failure = `Compiler terminated by ${signal}`;
         // A burst that finished between samples must still be rejected.
         if (!failure && code === 0 && budget && (await directoryBytes(budget.directory, budget.maxDirectoryBytes)) > budget.maxDirectoryBytes) failure = diskMessage;
@@ -277,6 +328,7 @@ export function runBounded(command: string, args: string[], options: {
       };
       void finish();
     });
+    })().catch((error) => reject(error instanceof MediaError ? error : new MediaError(error instanceof Error ? error.message : String(error), 422, "compile_failed")));
   });
 }
 

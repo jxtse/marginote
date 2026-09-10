@@ -44,4 +44,10 @@ it("rewrites responsive srcset candidates through the asset API and drops unsafe
   expect(rewriteSrcset("a.png 1w 2x, b.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fb.png 2x");
   expect(rewriteSrcset("a.png 0w, b.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fb.png 2x");
   expect(rewriteSrcset("a.png ((x), b.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fb.png 2x");
+  // Descriptor validity per WHATWG: leading zeros are fine for widths, "1." and "1X" are
+  // not valid densities, NBSP is not ASCII whitespace so it stays inside the token
+  // (and thus invalidates it), and a future-compat "h" descriptor requires a width.
+  expect(rewriteSrcset("a.png 01w, b.png 1.x, c.png 1X, d.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fa.png 01w, /api/assets?path=paper%2Fd.png 2x");
+  expect(rewriteSrcset("a.png 2x\u00a0, b.png 3x", "paper/main.md")).toBe("/api/assets?path=paper%2Fb.png 3x");
+  expect(rewriteSrcset("a.png 100w 50h, b.png 50h", "paper/main.md")).toBe("/api/assets?path=paper%2Fa.png 100w 50h");
 });

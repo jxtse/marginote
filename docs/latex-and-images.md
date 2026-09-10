@@ -43,15 +43,22 @@ widening the sandbox. Open an issue with the log if you need a layout added.
 - Compilation has a 120-second timeout and 256 KiB stdout/stderr ceiling. A project
   snapshot is limited to 5,000 supported files, 50,000 directory entries and 256 MiB;
   returned PDFs/assets are limited to 64 MiB. Before the compiler starts, the OS
-  applies `RLIMIT_FSIZE` (128 MiB per file) and, on Linux, `RLIMIT_AS` (4 GiB) so those
-  ceilings hold at every instant. While it runs, the output directory (also its
-  `TMPDIR`) and the resident memory of its whole descendant tree (ppid walk, so
-  processes that leave the session are still counted) are sampled every 250 ms;
-  exceeding 512 MiB of generated data or 2 GiB RSS kills every descendant, then the
-  process group. If process accounting itself fails while the compiler is alive the
-  job is killed rather than left unbounded, and the output size is re-checked once
-  after exit so a burst between samples is still rejected. Server shutdown cancels
-  compilation and waits for temp cleanup.
+  applies `RLIMIT_FSIZE` (exactly 128 MiB per file; the shell's `ulimit -f` unit is
+  probed once so the value is not off by 2×) and, on Linux, `RLIMIT_AS` (4 GiB) so
+  those ceilings hold at every instant. While it runs, two independent samplers poll
+  every 250 ms: one sums the resident memory of every process still reachable from the
+  compiler through the parent chain (so `bwrap --new-session` children are counted), the
+  other measures the output directory (also the compiler's `TMPDIR`) with a bounded,
+  early-exiting scan. Exceeding 512 MiB of generated data or 2 GiB RSS kills those
+  descendants, then the process group. Termination is idempotent and enumerates
+  descendants before signalling. If process accounting itself fails while the compiler
+  is alive the job is killed rather than left unbounded; a memory sample that returns
+  over budget after the compiler already exited still fails the job, and the output
+  size is re-checked once after exit so a burst between samples is rejected. A
+  descendant that double-forks and whose intermediate parent exits before enumeration
+  is no longer reachable through the parent chain; on Linux, bwrap's PID namespace
+  ends it with the sandbox, on macOS such a process is outside what Marginote can
+  track. Server shutdown cancels compilation and waits for temp cleanup.
 - Errors are JSON `{ code, error, log }`; missing files return `404`, invalid paths
   `400`, compiler failures `422`, and missing runtimes `503`. Logs render as text,
   never HTML. Existing host/origin checks apply to both APIs.

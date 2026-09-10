@@ -61,3 +61,54 @@ it("processTreeRss sums descendants found through the ppid chain", async () => {
   expect(rss).toBeGreaterThan(1 << 20);
   await expect(processTreeRss(process.pid, "/nonexistent/ps")).rejects.toThrow();
 });
+
+it("terminates idempotently: a flood of over-limit log chunks spawns at most one ps enumeration", () => withDir(async (dir) => {
+  // Emit many small chunks well past the log cap, each of which used to call kill() and
+  // therefore start another `ps`. Count ps invocations through a counting wrapper.
+  const { writeFile, chmod } = await import("node:fs/promises");
+  const counter = join(dir, "ps-count");
+  const wrapper = join(dir, "ps");
+  await writeFile(wrapper, `#!/bin/sh\necho x >> ${JSON.stringify(counter)}\nexec /bin/ps "$@"\n`);
+  await chmod(wrapper, 0o755);
+  const script = `let i=0;const t=setInterval(()=>{process.stdout.write("y".repeat(200)+"\\n");if(++i>400)clearInterval(t)},1)`;
+  await expect(runBounded(process.execPath, ["-e", script], { ...base, cwd: dir, maxOutputBytes: 512, budget: { directory: dir, maxDirectoryBytes: 1 << 30, maxRssBytes: 1 << 30, intervalMs: 60_000, psCommand: wrapper } })).rejects.toThrow(/output limit/);
+  const { readFile } = await import("node:fs/promises");
+  const invocations = (await readFile(counter, "utf8").catch(() => "")).split("\n").filter(Boolean).length;
+  expect(invocations).toBeLessThanOrEqual(1);
+}));
+
+it("rejects a compiler whose memory sample came back over budget only after it exited", () => withDir(async (dir) => {
+  // ps is delayed so its over-limit answer lands after the child has already closed. The
+  // fake ps reports a huge RSS for the pid recorded by the child itself.
+  const { writeFile, chmod } = await import("node:fs/promises");
+  const pidFile = join(dir, "child.pid");
+  const slowPs = join(dir, "ps");
+  await writeFile(slowPs, `#!/bin/sh\nsleep 0.3\np="$(cat ${JSON.stringify(pidFile)} 2>/dev/null || echo 1)"\necho "$p 1 999999999"\n`);
+  await chmod(slowPs, 0o755);
+  const script = `require("fs").writeFileSync(process.argv[1], String(process.pid)); setTimeout(()=>{},150)`;
+  await expect(runBounded(process.execPath, ["-e", script, pidFile], { ...base, cwd: dir, budget: { directory: dir, maxDirectoryBytes: 1 << 30, maxRssBytes: 64 << 20, intervalMs: 10, psCommand: slowPs } })).rejects.toThrow(/memory/);
+}));
+
+it("keeps sampling memory on schedule while a directory scan is slow", () => withDir(async (dir) => {
+  // 12,000 empty files make each scan take noticeably longer than the 10 ms interval;
+  // the allocator must still be killed by the memory check within a few intervals.
+  const { writeFile } = await import("node:fs/promises");
+  await Promise.all(Array.from({ length: 12_000 }, (_, i) => writeFile(join(dir, `f${i}`), "")));
+  const script = `const a=[];setInterval(()=>{a.push(Buffer.alloc(32<<20,1))},5)`;
+  const started = Date.now();
+  await expect(runBounded(process.execPath, ["-e", script], { ...base, cwd: dir, budget: { directory: dir, maxDirectoryBytes: 1 << 30, maxRssBytes: 128 << 20, intervalMs: 10 } })).rejects.toThrow(/memory/);
+  expect(Date.now() - started).toBeLessThan(3_000);
+}));
+
+it("applies the exact per-file limit regardless of the shell's ulimit unit", () => withDir(async (dir) => {
+  // Write a file just under the limit (must succeed) and one just over (must be cut).
+  const under = `require("fs").writeFileSync(process.argv[1]+"/under", Buffer.alloc((1<<20)-4096)); console.log("ok")`;
+  expect(await runBounded(process.execPath, ["-e", under, dir], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).toContain("ok");
+  const over = `require("fs").writeFileSync(process.argv[1]+"/over", Buffer.alloc((1<<20)+4096))`;
+  await expect(runBounded(process.execPath, ["-e", over, dir], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).rejects.toThrow(/per-file limit/);
+  const { stat } = await import("node:fs/promises");
+  const size = (await stat(join(dir, "over"))).size;
+  // Exactly the limit, modulo the last partial write the kernel may let through (< 1 page).
+  expect(size).toBeGreaterThanOrEqual(1 << 20);
+  expect(size).toBeLessThan((1 << 20) + 4096 + 1);
+}));

@@ -33,8 +33,30 @@ export function imageAssetUrl(reference: string, documentPath: string): string |
  * Unsafe candidates are dropped individually so responsive raw-HTML images keep working.
  */
 const ASCII_WHITESPACE = /[\t\n\f\r ]/;
-const WIDTH_DESCRIPTOR = /^[1-9]\d*w$/;
-const DENSITY_DESCRIPTOR = /^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?x$/i;
+const ASCII_WHITESPACE_RUN = /[\t\n\f\r ]+/;
+const ASCII_TRIM = /^[\t\n\f\r ]+|[\t\n\f\r ]+$/g;
+// Width: valid non-negative integer > 0 (leading zeros allowed by the integer grammar).
+const WIDTH_DESCRIPTOR = /^\d+w$/;
+// Density: valid floating-point number (digits with optional fraction, or ".digits",
+// optional exponent) followed by lowercase "x"; "1." has no fraction digits so it is
+// invalid, and the suffix is case-sensitive.
+const DENSITY_DESCRIPTOR = /^(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?x$/;
+// Future-compat height descriptor: only meaningful next to a width descriptor.
+const HEIGHT_DESCRIPTOR = /^\d+h$/;
+
+/** WHATWG "parse a srcset attribute" descriptor validation for one candidate. */
+function validDescriptors(descriptors: string[]): boolean {
+  let width = false;
+  let density = false;
+  let height = false;
+  for (const descriptor of descriptors) {
+    if (WIDTH_DESCRIPTOR.test(descriptor) && !width && !density && Number.parseInt(descriptor, 10) > 0) width = true;
+    else if (DENSITY_DESCRIPTOR.test(descriptor) && !density && !width && !height && Number.parseFloat(descriptor) >= 0) density = true;
+    else if (HEIGHT_DESCRIPTOR.test(descriptor) && !height && !density && Number.parseInt(descriptor, 10) > 0) height = true;
+    else return false;
+  }
+  return !(height && !width);
+}
 
 export function rewriteSrcset(srcset: string, documentPath: string): string {
   const candidates: string[] = [];
@@ -57,14 +79,12 @@ export function rewriteSrcset(srcset: string, documentPath: string): string {
         else if (character === ",") break;
         position++;
       }
-      descriptors = srcset.slice(descriptorStart, position).trim().split(/[\t\n\f\r ]+/).filter(Boolean);
+      descriptors = srcset.slice(descriptorStart, position).replace(ASCII_TRIM, "").split(ASCII_WHITESPACE_RUN).filter(Boolean);
     }
     if (!url) continue;
     const resolved = imageAssetUrl(url, documentPath);
     if (!resolved) continue;
-    if (descriptors.length > 1) continue;
-    const descriptor = descriptors[0];
-    if (descriptor !== undefined && !WIDTH_DESCRIPTOR.test(descriptor) && !DENSITY_DESCRIPTOR.test(descriptor)) continue;
+    if (!validDescriptors(descriptors)) continue;
     candidates.push([resolved, ...descriptors].join(" "));
   }
   return candidates.join(", ");
