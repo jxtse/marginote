@@ -203,19 +203,23 @@ const RLIMIT_PROLOGUE = [
 
 /**
  * Cached result of detecting whether /bin/sh's `ulimit -f` counts 512-byte blocks.
- * Only a positive identification is cached: under `ulimit -f 1`, a 1024-byte write
- * succeeding means KiB; a 1024-byte write failing while a 512-byte write succeeds means
- * blocks. Any other outcome (unwritable probe dir, missing head(1), timeout) is
- * "unknown" and is NOT cached, so the next compile re-probes rather than inheriting a
- * failure. Callers must refuse to start the compiler on "unknown".
+ * Only a positive identification is cached, and each verdict requires the kernel's own
+ * fingerprint under `ulimit -f 1`, using a single 1024-byte write:
+ *   - the write succeeds and the file measures exactly 1024 bytes  -> KiB;
+ *   - the write fails and the file measures exactly 512 bytes      -> blocks
+ *     (RLIMIT_FSIZE truncates at the limit; a transient EIO/ENOSPC/open failure leaves
+ *     0 bytes or no file and therefore cannot be mistaken for blocks).
+ * Anything else is "unknown", is NOT cached, and callers refuse to start the compiler.
  */
 let ulimitUnitProbe: Promise<"blocks" | "kib" | "unknown"> | undefined;
-const ULIMIT_PROBE = [
-  'd="$1"; a="$d/marginote-ulimit-a.$$"; b="$d/marginote-ulimit-b.$$"',
-  'trap \'rm -f "$a" "$b"\' EXIT',
+export const ULIMIT_PROBE = [
+  'd="$1"; a="$d/marginote-ulimit-probe.$$"',
+  'trap \'rm -f "$a"\' EXIT',
   'ulimit -f 1 || { echo unknown; exit 0; }',
-  'if head -c 1024 /dev/zero > "$a" 2>/dev/null && [ "$(wc -c < "$a" | tr -d " ")" = "1024" ]; then echo kib; exit 0; fi',
-  'if head -c 512 /dev/zero > "$b" 2>/dev/null && [ "$(wc -c < "$b" | tr -d " ")" = "512" ]; then echo blocks; exit 0; fi',
+  'if head -c 1024 /dev/zero > "$a" 2>/dev/null; then ok=1; else ok=0; fi',
+  'size="$(wc -c < "$a" 2>/dev/null | tr -d " ")"',
+  'if [ "$ok" = 1 ] && [ "$size" = 1024 ]; then echo kib; exit 0; fi',
+  'if [ "$ok" = 0 ] && [ "$size" = 512 ]; then echo blocks; exit 0; fi',
   "echo unknown",
 ].join("; ");
 function detectUlimitUnit(probeDirectory: string): Promise<"blocks" | "kib" | "unknown"> {
@@ -339,12 +343,14 @@ export function runBounded(command: string, args: string[], options: {
         if (!failure && code === 97) failure = "Could not apply OS resource limits to the compiler";
         // SIGXFSZ is the kernel enforcing RLIMIT_FSIZE from the prologue: the compiler tried
         // to write a single file past the per-file ceiling. Runtimes that ignore SIGXFSZ
-        // (Node does) fail with EFBIG instead; match only the runtime error line shapes
-        // ("Error: EFBIG: ..." / "code: 'EFBIG'" / "...: File too large"), not prose, and
-        // keep the generic exit reason so the attribution is visibly a probable cause.
+        // (Node does) fail with EFBIG instead. Match only error-line shapes emitted by
+        // runtimes/libc ("Error: EFBIG: ...", "code: 'EFBIG'", "errno ... EFBIG",
+        // "<path>: File too large"), never a bare word in prose, and keep the exit code
+        // so the attribution is visibly a probable cause.
         const perFile = `${Math.round((options.hardLimits?.maxFileBytes ?? 0) / 1048576)} MiB per-file limit`;
         if (!failure && signal === "SIGXFSZ") failure = `Compiler tried to write a file larger than the ${perFile}`;
-        if (!failure && options.hardLimits && code !== 0 && /(^|\n)[^\n]*\b(EFBIG\b|File too large\s*$)/m.test(log)) failure = `Tectonic failed (exit ${code}); the log reports EFBIG, most likely the ${perFile}`;
+        const efbigLine = /^(?:\s*(?:\w*Error|error|errno):?\s*EFBIG\b.*|\s*code:\s*['"]EFBIG['"].*|.*\S: File too large\s*)$/m;
+        if (!failure && options.hardLimits && code !== 0 && efbigLine.test(log)) failure = `Tectonic failed (exit ${code}); the log reports EFBIG, most likely the ${perFile}`;
         if (!failure && signal) failure = `Compiler terminated by ${signal}`;
         // A burst that finished between samples must still be rejected.
         if (!failure && code === 0 && budget && (await directoryBytes(budget.directory, budget.maxDirectoryBytes)) > budget.maxDirectoryBytes) failure = diskMessage;

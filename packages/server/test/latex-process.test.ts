@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { runBounded, processTreeRss, resetUlimitUnitProbe } from "../src/latex.js";
+import { ULIMIT_PROBE, runBounded, processTreeRss, resetUlimitUnitProbe } from "../src/latex.js";
 
 const base = { timeoutMs: 10_000, maxOutputBytes: 1024 };
 
@@ -90,6 +90,37 @@ it("processTreeRss sums descendants found through the ppid chain", async () => {
   expect(rss).toBeGreaterThan(1 << 20);
   await expect(processTreeRss(process.pid, "/nonexistent/ps")).rejects.toThrow();
 });
+
+it("does not attribute an unrelated failure to the per-file limit because prose mentions EFBIG", () => withDir(async (dir) => {
+  const script = `console.log("This paragraph discusses EFBIG behavior and says File too large in passing"); process.exit(3)`;
+  await expect(runBounded(process.execPath, ["-e", script], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).rejects.toThrow(/exit 3\); check compiler log$/);
+  const real = `console.error("Error: EFBIG: file too large, write"); process.exit(1)`;
+  await expect(runBounded(process.execPath, ["-e", real], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).rejects.toThrow(/most likely the 1 MiB per-file limit/);
+}));
+
+it("ulimit unit probe reports unknown, not blocks, when the write fails for a reason other than RLIMIT_FSIZE", () => withDir(async (dir) => {
+  // Drive the exact probe script with a directory whose only writable entry is a
+  // pre-existing 0-byte file at the probe's name: the 1024-byte write fails (EACCES on
+  // an r-- file) leaving size 0, which must NOT be read as blocks (that needs exactly
+  // 512 bytes, the kernel's RLIMIT_FSIZE truncation fingerprint).
+  const { writeFile, chmod } = await import("node:fs/promises");
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+  // The script names its file marginote-ulimit-probe.$$; run it via a wrapper that fixes
+  // $$ by exec'ing with a known pid is not portable, so instead read the script's
+  // behaviour through its exported constant with `$$` substituted for a fixed token.
+  const script = ULIMIT_PROBE.replace(/\$\$/g, "fixed");
+  const probeFile = join(dir, "marginote-ulimit-probe.fixed");
+  await writeFile(probeFile, "");
+  await chmod(probeFile, 0o400);
+  // The script's EXIT trap removes the probe file itself, so no cleanup is needed here.
+  const first = await run("/bin/sh", ["-c", script, "probe", dir]);
+  expect(first.stdout.trim()).toBe("unknown");
+  // Sanity: with a writable directory the same script gives a definite answer.
+  const second = await run("/bin/sh", ["-c", script, "probe", dir]);
+  expect(["kib", "blocks"]).toContain(second.stdout.trim());
+}));
 
 it("terminates idempotently: a flood of over-limit log chunks spawns at most one ps enumeration", () => withDir(async (dir) => {
   // Emit many small chunks well past the log cap, each of which used to call kill() and
