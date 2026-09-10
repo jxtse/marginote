@@ -1,5 +1,7 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
+import { documentLanguage } from "./document-language.js";
+import { documentMode } from "./media.js";
+import { LatexPreview } from "./latex-preview.js";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { yCollab } from "y-codemirror.next";
@@ -61,6 +63,36 @@ const pathEl = $("#docpath");
 const presenceEl = $("#presence");
 const editorEl = $("#editor");
 const previewEl = $("#preview");
+const latexPreview = new LatexPreview((state) => {
+  previewEl.classList.add("latex-preview");
+  const status = document.createElement("div");
+  status.className = "latex-status";
+  status.setAttribute("role", "status");
+  status.textContent = state.status === "waiting" ? "Waiting to compile…" : state.status === "compiling" ? "Compiling LaTeX…" : state.status === "ready" ? "PDF compiled" : "LaTeX compilation failed";
+  previewEl.replaceChildren(status);
+  if (state.status === "ready") {
+    const link = document.createElement("a");
+    link.href = state.url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "Open PDF";
+    status.append(" · ", link);
+    const frame = document.createElement("iframe");
+    frame.className = "latex-pdf";
+    frame.title = "LaTeX PDF preview";
+    frame.src = `${state.url}#view=FitH`;
+    previewEl.append(frame);
+  } else if (state.status === "error") {
+    const error = document.createElement("pre");
+    error.className = "latex-error";
+    error.textContent = state.error;
+    const retry = document.createElement("button");
+    retry.textContent = "Retry compilation";
+    retry.onclick = () => { latexPreview.reset(); void paintPreview(); };
+    previewEl.append(error, retry);
+  }
+});
+window.addEventListener("pagehide", () => latexPreview.reset());
 const suggestionsEl = $("#suggestions");
 const commentsEl = $("#comments");
 const agentsEl = $("#agents");
@@ -405,6 +437,8 @@ async function previewEntry(entry: RegistryEntry): Promise<void> {
     pathEl.textContent = `${entry.repo} · preview (not saved)`;
     view?.destroy();
     view = null;
+    latexPreview.reset();
+    previewEl.classList.remove("latex-preview");
     await renderPreview(previewEl, content.slice(0, 200_000), {
       resolveLink: () => null,
       onNavigate: () => {},
@@ -564,7 +598,13 @@ async function showFrame(index: number): Promise<void> {
       `/api/replay/frame?doc=${encodeURIComponent(current)}&at=${frame.at}`,
     );
     if (token !== frameToken) return;
-    await renderPreview(previewEl, text, { resolveLink: () => null, onNavigate: () => {} });
+    latexPreview.reset();
+    previewEl.classList.remove("latex-preview");
+    if (documentMode(current) === "stex") {
+      const source = document.createElement("pre");
+      source.textContent = text;
+      previewEl.replaceChildren(source);
+    } else await renderPreview(previewEl, text, { resolveLink: () => null, onNavigate: () => {}, documentPath: current });
   } catch {
     if (token === frameToken) replayLabel.textContent = "could not load that moment";
   }
@@ -866,9 +906,20 @@ function attachRunButtons(): void {
 
 async function paintPreview(): Promise<void> {
   if (!view || !ytext || document.body.classList.contains("replaying")) return;
+  if (current && documentMode(current) === "stex") {
+    const source = committedTextOf(ytext);
+    // A newly opened CRDT is briefly empty before its initial sync arrives. Clearing also
+    // guarantees that intentionally emptying a synced file cannot leave a stale PDF visible.
+    if (source.trim()) latexPreview.schedule(current, source);
+    else latexPreview.clear();
+    return;
+  }
+  latexPreview.reset();
+  previewEl.classList.remove("latex-preview");
   // Render the committed projection, so the preview always matches the file on disk
   // rather than splicing un-accepted suggestions into the prose.
   await renderPreview(previewEl, committedTextOf(ytext), {
+    documentPath: current ?? "",
     resolveLink: (target) => {
       const wanted = target.toLowerCase().replace(/\.md$/, "");
       return (
@@ -883,6 +934,9 @@ async function paintPreview(): Promise<void> {
 }
 
 async function open(path: string): Promise<void> {
+  latexPreview.reset();
+  previewEl.classList.remove("latex-preview");
+  previewEl.replaceChildren();
   navigation.reset();
   view?.destroy();
   provider?.destroy();
@@ -924,7 +978,7 @@ async function open(path: string): Promise<void> {
         lineNumbers(),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
-        markdown(),
+        documentLanguage(path),
         marginoteEditorTheme,
         marginoteHighlight,
         EditorView.lineWrapping,

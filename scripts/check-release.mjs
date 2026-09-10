@@ -14,6 +14,7 @@ const cli = join(dirname(fileURLToPath(import.meta.url)), "../packages/cli");
 const problems = [];
 
 const exists = async (p) => access(join(cli, p)).then(() => true).catch(() => false);
+if (!(await exists("docs/latex-and-images.md"))) problems.push("missing LaTeX runtime setup instructions");
 
 for (const required of ["dist/marginote.js", "dist/marginote-mcp.js", "web/index.html", "registry/index.json", "LICENSE"]) {
   if (!(await exists(required))) problems.push(`missing ${required} — run: npm run build:release`);

@@ -311,6 +311,13 @@ main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-
   line-height: var(--prose-leading, 1.72);
 }
 #preview > * { max-width: var(--prose-measure, 62ch); }
+#preview img { max-width: 100%; height: auto; object-fit: contain; }
+#preview .pdf-image { display: block; width: 100%; height: min(65vh, 720px); border: 0; }
+#preview.latex-preview { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+#preview.latex-preview > * { max-width: none; }
+#preview .latex-status { flex: none; padding: 10px 16px; font: 13px/1.5 system-ui, sans-serif; }
+#preview .latex-pdf { flex: 1; min-height: 0; width: 100%; border: 0; background: #525659; }
+#preview .latex-error { padding: 16px; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; }
 .sync-nav-flash {
   animation: sync-nav-flash 1.2s ease-out;
 }
@@ -524,7 +531,7 @@ button.revert:hover { border-color: color-mix(in srgb, var(--remove) 50%, transp
   body { --sidebar-w: 0px; --sidebar-rz: 0px; --rail-w: 0px; --rail-rz: 0px; }
   #sidebar, #rz-sidebar, #rail, #rz-rail, #rz-editor { display: none; }
   #split { grid-template-columns: minmax(0, 1fr) 0 0; }
-  #preview { display: none; }
+  #preview, #preview.latex-preview { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

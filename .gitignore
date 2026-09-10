@@ -16,6 +16,7 @@ test-results/
 packages/cli/dist/
 packages/cli/web/
 packages/cli/registry/
+packages/cli/docs/
 packages/cli/README.md
 packages/cli/LICENSE
 packages/cli/SECURITY.md

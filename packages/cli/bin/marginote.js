@@ -29,7 +29,7 @@ if (args.includes("--help") || args.includes("-h")) {
   console.log(`
   marginote                   Open ~/Documents/Marginote; create it with a welcome
                               document only when the folder does not exist.
-  marginote <directory>       Use an existing folder of Markdown files instead.
+  marginote <directory>       Use an existing Markdown folder or LaTeX project instead.
   marginote --demo             Try Marginote in a disposable sample vault.
 
     -v, --version         Print the installed Marginote version
@@ -39,7 +39,7 @@ if (args.includes("--help") || args.includes("-h")) {
     --host <addr>         Bind address (default 127.0.0.1, local only)
     --allow-host <name>   Additionally trust this hostname (repeatable). Needed only
                           when deliberately exposing the vault, e.g. via a tunnel.
-    --git                 Opt in to periodic git snapshots of Markdown changed by Marginote
+    --git                 Opt in to periodic git snapshots of documents changed by Marginote
     --no-discover         Disable the Discover tab (no discovery requests)
     --no-search           Keep the curated index, but disable live GitHub search
     --no-persist          Do not save collaboration state. Comments, attribution and
@@ -149,7 +149,7 @@ try {
 const count = server.vault.list().length;
 console.log(`\n  Marginote\n`);
 console.log(`  vault   ${root}`);
-console.log(`  docs    ${count} markdown file${count === 1 ? "" : "s"}`);
+console.log(`  docs    ${count} document${count === 1 ? "" : "s"}`);
 console.log(`  local   http://127.0.0.1:${server.port}\n`);
 if (demoRoot) console.log(`  demo    disposable -- removed when Marginote stops`);
 const snapshots = server.git && (await server.git.isRepo());

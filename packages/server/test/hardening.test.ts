@@ -212,6 +212,18 @@ describe("search and links robustness", () => {
     expect(res.ok).toBe(true);
   });
 
+  it("searches TeX sources alongside Markdown with either engine", async () => {
+    await writeFile(join(dir, "paper.tex"), "\\section{Zebra-lemma-unique}\n", "utf8");
+    await writeFile(join(dir, "notes.md"), "Zebra-lemma-unique in Markdown\n", "utf8");
+    await sleep(500);
+    const res = await fetch(`${base()}/api/search?q=${encodeURIComponent("Zebra-lemma-unique")}`);
+    const { results } = (await res.json()) as { results: Array<{ path: string }> };
+    // A Markdown hit must not hide the TeX hit: when ripgrep matches only *.md the
+    // server trusts that result and never consults the in-process fallback.
+    expect(results.some((r) => r.path === "notes.md")).toBe(true);
+    expect(results.some((r) => r.path === "paper.tex")).toBe(true);
+  });
+
   it("ignores self-links and resolves cycles", () => {
     const graph = buildLinkGraph([
       { path: "a.md", text: "[[a]] and [[b]]" },

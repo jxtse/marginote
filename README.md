@@ -4,9 +4,9 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](./LICENSE)
 
-**Local-first collaborative Markdown, with an agent in the margin.**
+**Local-first collaborative Markdown and LaTeX, with an agent in the margin.**
 
-Write in plain Markdown, collaborate live, and ask for help where the words are.
+Write in plain Markdown or LaTeX, collaborate live, and ask for help where the words are.
 Select text, leave a comment, and the embedded agent reads it immediately — with the
 full document, the thread history, and the exact range you marked. It answers on the
 thread, proposes reviewable edits that never touch the file until you accept them,
@@ -56,7 +56,7 @@ No account or signup. Core editing works without a key. Press `Ctrl+C` to stop.
 
 ## Your files, your provider
 
-The filesystem remains the source of truth. Point Marginote at any Markdown folder:
+The filesystem remains the source of truth. Point Marginote at any Markdown folder or LaTeX project:
 
 ```bash
 marginote ~/my-notes
@@ -77,6 +77,10 @@ after three minutes, and failures surface in agent status/Settings.
 
 ## Advanced usage
 
+LaTeX entry points (`.tex`) have compiler-backed PDF preview with Tectonic; Markdown
+supports relative vault images and PDF figure links. See [LaTeX and image setup](docs/latex-and-images.md)
+for the offline cache and OS sandbox prerequisites, security limits, and verification commands.
+
 ```bash
 npx marginote --demo                 # Disposable sample vault, removed on shutdown
 npx marginote ~/notes --port 4322     # Choose a port
@@ -87,7 +91,7 @@ npx marginote --help                 # All flags, including host, discovery and 
 The default bind address is `127.0.0.1`. Deliberate network sharing requires explicit
 host configuration; see [SECURITY.md](SECURITY.md). `--no-discover` disables discovery
 traffic, not an agent you explicitly configure. `--no-persist` makes collaboration
-metadata temporary; Markdown edits still save to disk. `--allow-exec` explicitly
+metadata temporary; document edits still save to disk. `--allow-exec` explicitly
 enables local fenced-code execution and is separate from the embedded agent sandbox.
 
 External MCP collaborators can still join through `marginote-mcp`; the embedded agent

@@ -36,6 +36,8 @@ import {
 import { ExecRefused, formatResult, runBlock, supportedLanguages } from "./exec.js";
 import { collectReceipt, renderReceipt } from "./receipt.js";
 import { isRequestAllowed, isSafeDocPath } from "./security.js";
+import { ASSET_MIME, MediaError, readVaultFile } from "./assets.js";
+import { LatexRenderer, type LatexCompiler } from "./latex.js";
 import { ShareRegistry, type ShareRole } from "./sharing.js";
 import { searchDocuments, searchVault } from "./search.js";
 import { Room } from "./room.js";
@@ -64,6 +66,7 @@ export interface MarginoteServerOptions extends VaultOptions {
    * the server is bound beyond loopback -- see exec.ts.
    */
   allowExec?: boolean;
+  latexCompiler?: LatexCompiler;
 }
 
 const MIME: Record<string, string> = {
@@ -75,6 +78,7 @@ const MIME: Record<string, string> = {
 };
 
 export class MarginoteServer {
+  private readonly latex: LatexRenderer;
   readonly agent: EmbeddedAgent;
   /** Capability links. In memory only, so they never outlive the session that made them. */
   readonly shares = new ShareRegistry();
@@ -100,6 +104,7 @@ export class MarginoteServer {
     readonly vault: Vault,
     private readonly opts: MarginoteServerOptions,
   ) {
+    this.latex = new LatexRenderer(vault, opts.latexCompiler);
     this.agent = new EmbeddedAgent(vault);
     this.git = opts.git ? new GitSnapshotter(vault, opts.git) : null;
 
@@ -233,6 +238,38 @@ export class MarginoteServer {
       res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(body));
     };
+
+    if (url.pathname === "/api/assets" || url.pathname === "/api/latex") {
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'");
+      res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+      const latex = url.pathname === "/api/latex";
+      if (req.method !== (latex ? "POST" : "GET")) { json({ code: "method_not_allowed", error: "Method not allowed" }, 405); return; }
+      try {
+        if (latex) {
+          // Abort the compilation when the browser drops the request (navigation, edit
+          // debounce, tab close) so an orphaned job cannot pin the single compile slot.
+          const client = new AbortController();
+          const onClose = (): void => client.abort();
+          req.once("close", onClose);
+          let rendered: { pdf: Buffer; hash: string };
+          try { rendered = await this.latex.render(url.searchParams.get("doc") ?? "", client.signal); }
+          finally { req.removeListener("close", onClose); }
+          res.writeHead(200, { "content-type": "application/pdf", "x-source-hash": rendered.hash });
+          res.end(rendered.pdf);
+        } else {
+          const path = url.searchParams.get("path") ?? "";
+          const data = await readVaultFile(this.vault.root, path, Object.keys(ASSET_MIME));
+          res.writeHead(200, { "content-type": ASSET_MIME[extname(path).toLowerCase()]! });
+          res.end(data);
+        }
+      } catch (error) {
+        const failure = error instanceof MediaError ? error : new MediaError("Unable to read vault media", 500, "media_failed");
+        json({ code: failure.code, error: failure.message, log: failure.log }, failure.status);
+      }
+      return;
+    }
 
     if (url.pathname.startsWith("/api/agent/")) {
       const address = req.socket.remoteAddress;
@@ -690,6 +727,7 @@ export class MarginoteServer {
   }
 
   async close(): Promise<void> {
+    await this.latex.close();
     this.agent.close();
     if (this.roomSweep) clearInterval(this.roomSweep);
     this.roomSweep = null;

@@ -65,6 +65,8 @@ for (const [entry, name] of [
 }
 
 await cp(join(root, "packages/web/dist"), join(out, "web"), { recursive: true });
+await mkdir(join(out, "docs"), { recursive: true });
+await cp(join(root, "docs/latex-and-images.md"), join(out, "docs/latex-and-images.md"));
 await mkdir(join(out, "registry"), { recursive: true });
 await cp(join(root, "registry/index.json"), join(out, "registry/index.json"));
 for (const file of ["README.md", "LICENSE", "SECURITY.md"]) {

@@ -29,6 +29,7 @@ export async function searchVault(
         "--max-count", "5",
         "--glob", "*.md",
         "--glob", "*.markdown",
+        "--glob", "*.tex",
         "--", query, ".",
       ],
       { cwd: root, maxBuffer: 8 * 1024 * 1024 },

@@ -1,5 +1,6 @@
 import { previewBlocks } from "./preview-blocks.js";
 import type { Mermaid } from "mermaid";
+import { imageAssetUrl, rewriteSrcset } from "./media.js";
 
 /**
  * Mermaid is ~900 KB and most documents contain no diagrams, so it is loaded on first
@@ -56,7 +57,7 @@ const escapeAttr = escapeHtml;
 export async function renderPreview(
   target: HTMLElement,
   source: string,
-  options: { resolveLink: (t: string) => string | null; onNavigate: (path: string) => void },
+  options: { resolveLink: (t: string) => string | null; onNavigate: (path: string) => void; documentPath?: string },
 ): Promise<void> {
   const version = (renderVersions.get(target) ?? 0) + 1;
   renderVersions.set(target, version);
@@ -80,6 +81,38 @@ export async function renderPreview(
     }
   }
   target.replaceChildren(fragment);
+
+  if (options.documentPath) {
+    for (const image of target.querySelectorAll<HTMLImageElement>("img")) {
+      const reference = image.getAttribute("src") ?? "";
+      const url = imageAssetUrl(reference, options.documentPath);
+      const srcset = image.getAttribute("srcset");
+      if (srcset !== null) {
+        const rewritten = rewriteSrcset(srcset, options.documentPath);
+        if (rewritten) image.setAttribute("srcset", rewritten); else image.removeAttribute("srcset");
+      }
+      if (!url) { image.removeAttribute("src"); image.alt ||= "Unsupported or unsafe image path"; continue; }
+      if (/\.pdf(?:[?#]|$)/i.test(reference) && url.startsWith("/api/assets?")) {
+        const object = document.createElement("object");
+        object.className = "pdf-image";
+        object.type = "application/pdf";
+        object.data = url;
+        object.setAttribute("aria-label", image.alt || "PDF figure");
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = image.alt || "Open PDF figure";
+        object.append(link.cloneNode(true));
+        const figure = document.createElement("span");
+        figure.className = "pdf-figure";
+        if (image.dataset.srcStart) figure.dataset.srcStart = image.dataset.srcStart;
+        if (image.dataset.srcEnd) figure.dataset.srcEnd = image.dataset.srcEnd;
+        figure.append(object, link);
+        image.replaceWith(figure);
+      } else { image.src = url; image.loading = "lazy"; }
+    }
+  }
 
   for (const anchor of target.querySelectorAll<HTMLAnchorElement>("a.wikilink")) {
     anchor.onclick = (event) => {

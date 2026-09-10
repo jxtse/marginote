@@ -7,12 +7,13 @@
     "marginote": "dist/marginote.js",
     "marginote-mcp": "dist/marginote-mcp.js"
   },
-  "description": "Local-first collaborative Markdown with an embedded margin agent and draft grilling.",
+  "description": "Local-first collaborative Markdown and LaTeX with an embedded margin agent and draft grilling.",
   "author": "Heet Dalsania and Quire contributors; Marginote maintainer: jxtse",
   "files": [
     "dist/",
     "web/",
     "registry/",
+    "docs/",
     "README.md",
     "LICENSE",
     "SECURITY.md"
@@ -22,6 +23,7 @@
   },
   "keywords": [
     "markdown",
+    "latex",
     "collaborative",
     "crdt",
     "yjs",
