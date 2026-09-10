@@ -29,15 +29,19 @@ async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entr
   let visited = 0;
   let entryHash = "";
   const copyDirectory = async (relativeDir: string): Promise<void> => {
+    if (signal?.aborted) throw new MediaError("Compilation cancelled", 422, "compile_failed");
     const sourceDir = relativeDir ? join(liveRoot, relativeDir) : liveRoot;
     const targetDir = relativeDir ? join(snapshotRoot, relativeDir) : snapshotRoot;
-    await mkdir(targetDir, { recursive: true });
+    // Node's readdir reads a directory in one call; bounding here is what keeps a single
+    // enormous directory from consuming the whole entry budget before any check runs.
     const entries = await readdir(sourceDir, { withFileTypes: true });
+    if (visited + entries.length > SNAPSHOT_MAX_ENTRIES) throw new MediaError("LaTeX project directory has too many entries to snapshot", 413, "project_limit");
+    await mkdir(targetDir, { recursive: true });
     for (const entry of entries) {
       if (signal?.aborted) throw new MediaError("Compilation cancelled", 422, "compile_failed");
       // Every directory entry counts, not only copied files, so a tree of unsupported or
       // empty directories cannot turn the snapshot walk into an unbounded scan.
-      if (++visited > SNAPSHOT_MAX_ENTRIES) throw new MediaError("LaTeX project directory has too many entries to snapshot", 413, "project_limit");
+      visited++;
       if ([".git", ".marginote", "node_modules"].includes(entry.name)) continue;
       const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) throw new MediaError(`LaTeX snapshot does not follow symlink: ${relativePath}`, 400, "invalid_path");
@@ -60,76 +64,187 @@ async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entr
 }
 
 /**
- * Per-compilation resource budget enforced by a poller while the compiler runs. Wall
- * time and log size alone do not stop a hostile TeX file from filling the disk with
- * auxiliary output or ballooning XeTeX memory inside the 120 s window, so the
- * output directory size and the process tree's resident memory are sampled every
- * `intervalMs` and the whole process group is killed when either limit is crossed.
+ * Per-compilation resource budget. Two layers:
+ *
+ * 1. `hardLimits` are applied by the OS before the compiler starts (RLIMIT_FSIZE, and
+ *    RLIMIT_AS on Linux) through a constant `/bin/sh` prologue that receives every
+ *    value positionally, so there is no string interpolation and no injection surface.
+ *    macOS ignores RLIMIT_AS/RSS, which is why the poller below exists.
+ * 2. A poller samples the output directory (bounded scan, early exit past the limit)
+ *    and the resident memory of the whole descendant tree (ppid walk over `ps -eo`,
+ *    independent of pgid/sid so `bwrap --new-session` children are still counted)
+ *    every `intervalMs`. Either limit kills the process group. If accounting itself
+ *    fails while the compiler is alive the job is killed rather than left unbounded.
+ *    Disk is re-checked once after exit so a burst that finished between samples is
+ *    still rejected.
  */
 export interface ResourceBudget {
   directory: string;
   maxDirectoryBytes: number;
   maxRssBytes: number;
   intervalMs?: number;
+  /** Test hook: alternative `ps` binary, e.g. a missing path to simulate accounting failure. */
+  psCommand?: string;
+}
+export interface HardLimits {
+  /** RLIMIT_FSIZE in bytes: any single file the compiler writes is truncated here. */
+  maxFileBytes: number;
+  /** RLIMIT_AS in bytes; enforced by the kernel on Linux only, ignored on macOS. */
+  maxAddressSpaceBytes?: number;
 }
 
-async function directoryBytes(root: string): Promise<number> {
+const SCAN_MAX_ENTRIES = 20_000;
+
+/** Total size of regular files under `root`, stopping early once `limit` is exceeded or the scan itself grows too large. */
+async function directoryBytes(root: string, limit: number): Promise<number> {
   let total = 0;
+  let visited = 0;
   const pending = [root];
   while (pending.length) {
     const directory = pending.pop()!;
     let entries: Dirent[];
     try { entries = await readdir(directory, { withFileTypes: true }); } catch { continue; }
     for (const entry of entries) {
+      if (++visited > SCAN_MAX_ENTRIES) return Number.POSITIVE_INFINITY;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) pending.push(path);
-      else if (entry.isFile()) { try { total += (await lstat(path)).size; } catch {} }
+      else if (entry.isFile()) {
+        try { total += (await lstat(path)).size; } catch {}
+        if (total > limit) return total;
+      }
     }
   }
   return total;
 }
 
-/** Resident memory (bytes) of a process group, via `ps` because Node exposes no getrusage for children. */
-function processGroupRss(pgid: number): Promise<number> {
-  return new Promise((resolve) => {
-    execFile("ps", ["-o", "rss=", "-g", String(pgid)], { timeout: 2_000 }, (error, stdout) => {
-      if (error) { resolve(0); return; }
-      let kib = 0;
-      for (const line of stdout.split("\n")) { const value = Number.parseInt(line.trim(), 10); if (Number.isFinite(value)) kib += value; }
-      resolve(kib * 1024);
+/**
+ * Resident memory (bytes) of `rootPid` and every descendant reachable through ppid.
+ * Rejects when `ps` cannot be run or returns nothing usable; callers must treat that
+ * as a failure while the compiler is alive, never as "0 bytes".
+ */
+export function processTreeRss(rootPid: number, psCommand = "ps"): Promise<number> {
+  return new Promise((resolve, reject) => {
+    execFile(psCommand, ["-eo", "pid=,ppid=,rss="], { timeout: 2_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
+      if (error) { reject(new Error(`process accounting unavailable: ${error.message}`)); return; }
+      const children = new Map<number, number[]>();
+      const rss = new Map<number, number>();
+      for (const line of stdout.split("\n")) {
+        const [pid, ppid, kib] = line.trim().split(/\s+/).map((value) => Number.parseInt(value, 10));
+        if (!Number.isFinite(pid) || !Number.isFinite(ppid) || !Number.isFinite(kib)) continue;
+        rss.set(pid!, kib! * 1024);
+        const siblings = children.get(ppid!) ?? [];
+        siblings.push(pid!);
+        children.set(ppid!, siblings);
+      }
+      if (rss.size === 0) { reject(new Error("process accounting returned no processes")); return; }
+      let total = 0;
+      const pending = [rootPid];
+      const seen = new Set<number>();
+      while (pending.length) {
+        const pid = pending.pop()!;
+        if (seen.has(pid)) continue;
+        seen.add(pid);
+        total += rss.get(pid) ?? 0;
+        for (const child of children.get(pid) ?? []) pending.push(child);
+      }
+      resolve(total);
     });
   });
 }
 
+/** All descendant pids of `rootPid` via the ppid chain; empty when accounting is unavailable. */
+function descendantPids(rootPid: number, psCommand = "ps"): Promise<number[]> {
+  return new Promise((resolve) => {
+    execFile(psCommand, ["-eo", "pid=,ppid="], { timeout: 2_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
+      if (error) { resolve([]); return; }
+      const children = new Map<number, number[]>();
+      for (const line of stdout.split("\n")) {
+        const [pid, ppid] = line.trim().split(/\s+/).map((value) => Number.parseInt(value, 10));
+        if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
+        const siblings = children.get(ppid!) ?? [];
+        siblings.push(pid!);
+        children.set(ppid!, siblings);
+      }
+      const found: number[] = [];
+      const pending = [rootPid];
+      const seen = new Set<number>([rootPid]);
+      while (pending.length) for (const child of children.get(pending.pop()!) ?? []) if (!seen.has(child)) { seen.add(child); found.push(child); pending.push(child); }
+      resolve(found);
+    });
+  });
+}
+
+/**
+ * Constant shell prologue that applies rlimits then execs the real command. The script
+ * text never changes; limits and the command arrive as positional parameters, so this
+ * is not a shell-injection surface. `ulimit -v` is a no-op on macOS but harmless.
+ */
+const RLIMIT_PROLOGUE = 'ulimit -f "$1" || exit 97; if [ "$2" != "-" ]; then ulimit -v "$2" || exit 97; fi; shift 2; exec "$@"';
+
 export function runBounded(command: string, args: string[], options: {
-  cwd: string; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv; budget?: ResourceBudget;
+  cwd: string; timeoutMs: number; maxOutputBytes: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv; budget?: ResourceBudget; hardLimits?: HardLimits;
 }): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: options.cwd, env: options.env, shell: false, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    let executable = command;
+    let argv = args;
+    if (options.hardLimits && process.platform !== "win32") {
+      // ulimit -f counts 512-byte blocks on BSD/macOS sh and KiB on some Linux shells;
+      // KiB is the larger unit, so use it and accept a ≤2× slack on BSD rather than risk
+      // a cap smaller than a legitimate PDF.
+      const fileKib = Math.max(1, Math.ceil(options.hardLimits.maxFileBytes / 1024));
+      const addressKib = options.hardLimits.maxAddressSpaceBytes && process.platform === "linux" ? String(Math.ceil(options.hardLimits.maxAddressSpaceBytes / 1024)) : "-";
+      executable = "/bin/sh";
+      argv = ["-c", RLIMIT_PROLOGUE, "marginote-rlimit", String(fileKib), addressKib, command, ...args];
+    }
+    const child = spawn(executable, argv, { cwd: options.cwd, env: options.env, shell: false, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     const chunks: Buffer[] = [];
     let bytes = 0;
     let failure = "";
     let closed = false;
+    let reaping: Promise<void> = Promise.resolve();
     const kill = (reason: string): void => {
       failure ||= reason;
-      try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL"); else child.kill("SIGKILL"); } catch { child.kill("SIGKILL"); }
+      const pid = child.pid;
+      if (pid && process.platform !== "win32") {
+        // Enumerate descendants BEFORE signalling anything: once the parent dies they are
+        // reparented to init and the ppid walk can no longer find them. They may also
+        // have left our process group or session (bwrap --new-session), so the group
+        // kill alone is not enough.
+        reaping = descendantPids(pid, options.budget?.psCommand).then((pids) => {
+          for (const descendant of pids) { try { process.kill(descendant, "SIGKILL"); } catch {} }
+          try { process.kill(-pid, "SIGKILL"); } catch {}
+          try { child.kill("SIGKILL"); } catch {}
+        });
+      } else { try { child.kill("SIGKILL"); } catch {} }
     };
     const timer = setTimeout(() => kill("Tectonic timed out"), options.timeoutMs);
     const abort = (): void => kill("Compilation cancelled");
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();
     let watchdog: ReturnType<typeof setTimeout> | undefined;
+    let sampling: Promise<void> = Promise.resolve();
     const budget = options.budget;
+    const diskMessage = budget ? `Compiler generated more than ${Math.round(budget.maxDirectoryBytes / 1048576)} MiB of output` : "";
     if (budget && child.pid && process.platform !== "win32") {
       const pid = child.pid;
       const interval = budget.intervalMs ?? 250;
+      // Memory and disk are checked independently so a slow directory scan can never
+      // delay killing a process that is already over its memory budget.
+      const checkMemory = async (): Promise<void> => {
+        let rss: number;
+        try { rss = await processTreeRss(pid, budget.psCommand); }
+        catch (error) { if (!closed) kill(`Compiler memory accounting failed (${error instanceof Error ? error.message : String(error)}); refusing to run unbounded`); return; }
+        if (!closed && rss > budget.maxRssBytes) kill(`Compiler exceeded the ${Math.round(budget.maxRssBytes / 1048576)} MiB memory budget`);
+      };
+      const checkDisk = async (): Promise<void> => {
+        const disk = await directoryBytes(budget.directory, budget.maxDirectoryBytes);
+        if (!closed && disk > budget.maxDirectoryBytes) kill(diskMessage);
+      };
       const sample = async (): Promise<void> => {
         if (closed || failure) return;
-        const [disk, rss] = await Promise.all([directoryBytes(budget.directory), processGroupRss(pid)]);
-        if (closed || failure) return;
-        if (disk > budget.maxDirectoryBytes) kill(`Compiler generated more than ${Math.round(budget.maxDirectoryBytes / 1048576)} MiB of output`);
-        else if (rss > budget.maxRssBytes) kill(`Compiler exceeded the ${Math.round(budget.maxRssBytes / 1048576)} MiB memory budget`);
-        else watchdog = setTimeout(() => { void sample(); }, interval);
+        sampling = Promise.allSettled([checkMemory(), checkDisk()]).then(() => {});
+        await sampling;
+        if (!closed && !failure) watchdog = setTimeout(() => { void sample(); }, interval);
       };
       watchdog = setTimeout(() => { void sample(); }, interval);
     }
@@ -142,14 +257,25 @@ export function runBounded(command: string, args: string[], options: {
     child.stdout.on("data", receive);
     child.stderr.on("data", receive);
     child.on("error", (error: NodeJS.ErrnoException) => { failure = error.code === "ENOENT" ? "Tectonic or sandbox executable not found; install the required runtime" : error.message; });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       closed = true;
       clearTimeout(timer);
       clearTimeout(watchdog);
       options.signal?.removeEventListener("abort", abort);
-      const log = Buffer.concat(chunks).toString("utf8");
-      if (failure || code !== 0) reject(new MediaError(failure || `Tectonic failed (exit ${code}); check compiler log`, 422, "compile_failed", log));
-      else resolve(log);
+      const finish = async (): Promise<void> => {
+        await Promise.allSettled([sampling, reaping]);
+        const log = Buffer.concat(chunks).toString("utf8");
+        if (!failure && code === 97) failure = "Could not apply OS resource limits to the compiler";
+        // SIGXFSZ is the kernel enforcing RLIMIT_FSIZE from the prologue: the compiler tried
+        // to write a single file past the per-file ceiling.
+        if (!failure && signal === "SIGXFSZ") failure = `Compiler tried to write a file larger than the ${Math.round((options.hardLimits?.maxFileBytes ?? 0) / 1048576)} MiB per-file limit`;
+        if (!failure && signal) failure = `Compiler terminated by ${signal}`;
+        // A burst that finished between samples must still be rejected.
+        if (!failure && code === 0 && budget && (await directoryBytes(budget.directory, budget.maxDirectoryBytes)) > budget.maxDirectoryBytes) failure = diskMessage;
+        if (failure || code !== 0) reject(new MediaError(failure || `Tectonic failed (exit ${code}); check compiler log`, 422, "compile_failed", log));
+        else resolve(log);
+      };
+      void finish();
     });
   });
 }
@@ -220,6 +346,9 @@ export const tectonicCompiler: LatexCompiler = async ({ root, entryPath, outputD
     // size is the compiler's total generated data. 2 GiB RSS is generous for XeTeX on a
     // real paper (tens of MiB) while still stopping a runaway allocation loop.
     budget: { directory: outputDir, maxDirectoryBytes: 512 * 1024 * 1024, maxRssBytes: 2 * 1024 * 1024 * 1024 },
+    // Kernel-enforced ceilings that hold even between poller samples: no single file
+    // beyond the 64 MiB PDF limit (with headroom), and on Linux a 4 GiB address space.
+    hardLimits: { maxFileBytes: 128 * 1024 * 1024, maxAddressSpaceBytes: 4 * 1024 * 1024 * 1024 },
   });
 };
 

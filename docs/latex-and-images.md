@@ -23,10 +23,11 @@ All JavaScript and highlighting assets ship through `npm run build:release`.
 On macOS the sandbox read allow-list is fixed to the Tectonic binary found on PATH
 plus the Homebrew dynamic libraries it links against under `/opt/homebrew` (ICU,
 HarfBuzz, FreeType, Graphite2, libpng, GLib, gettext, PCRE2), resolved to their real
-`Cellar` paths at compile time. Apple-silicon Homebrew is the supported layout.
-Other layouts (Intel Homebrew under `/usr/local`, MacPorts, a static build) are not
-granted automatically: the compile fails with a `dyld` "Library not loaded" log
-rather than widening the sandbox. Open an issue with the log if you need one added.
+`Cellar` paths at compile time. Apple-silicon Homebrew is the supported and tested
+layout. Other layouts (Intel Homebrew under `/usr/local`, MacPorts, a self-built
+binary) are unverified; if such a binary needs a dynamic library outside the
+allow-list, the compile fails with a `dyld` "Library not loaded" log rather than
+widening the sandbox. Open an issue with the log if you need a layout added.
 
 ## API and limits
 
@@ -41,10 +42,16 @@ rather than widening the sandbox. Open an issue with the log if you need one add
   so an abandoned job cannot hold the slot.
 - Compilation has a 120-second timeout and 256 KiB stdout/stderr ceiling. A project
   snapshot is limited to 5,000 supported files, 50,000 directory entries and 256 MiB;
-  returned PDFs/assets are limited to 64 MiB. While the compiler runs, its output
-  directory (also its `TMPDIR`) and the resident memory of its process group are
-  sampled every 250 ms; exceeding 512 MiB of generated data or 2 GiB RSS kills the
-  whole job. Server shutdown cancels compilation and waits for temp cleanup.
+  returned PDFs/assets are limited to 64 MiB. Before the compiler starts, the OS
+  applies `RLIMIT_FSIZE` (128 MiB per file) and, on Linux, `RLIMIT_AS` (4 GiB) so those
+  ceilings hold at every instant. While it runs, the output directory (also its
+  `TMPDIR`) and the resident memory of its whole descendant tree (ppid walk, so
+  processes that leave the session are still counted) are sampled every 250 ms;
+  exceeding 512 MiB of generated data or 2 GiB RSS kills every descendant, then the
+  process group. If process accounting itself fails while the compiler is alive the
+  job is killed rather than left unbounded, and the output size is re-checked once
+  after exit so a burst between samples is still rejected. Server shutdown cancels
+  compilation and waits for temp cleanup.
 - Errors are JSON `{ code, error, log }`; missing files return `404`, invalid paths
   `400`, compiler failures `422`, and missing runtimes `503`. Logs render as text,
   never HTML. Existing host/origin checks apply to both APIs.

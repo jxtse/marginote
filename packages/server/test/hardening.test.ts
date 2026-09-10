@@ -224,7 +224,9 @@ describe("search and links robustness", () => {
     expect(results.some((r) => r.path === "paper.tex")).toBe(true);
     // Pin both engines explicitly rather than whichever this machine happens to select.
     const viaRipgrep = await searchVault(dir, "Zebra-lemma-unique", 10);
-    if (viaRipgrep.engine === "ripgrep") expect(viaRipgrep.results.map((r) => r.path).sort()).toEqual(["notes.md", "paper.tex"]);
+    const rgInstalled = await exec("rg", ["--version"]).then(() => true, () => false);
+    expect(viaRipgrep.engine).toBe(rgInstalled ? "ripgrep" : "fallback");
+    if (rgInstalled) expect(viaRipgrep.results.map((r) => r.path).sort()).toEqual(["notes.md", "paper.tex"]);
     const fallback = searchDocuments(
       [{ path: "paper.tex", text: "\\section{Zebra-lemma-unique}" }, { path: "notes.md", text: "Zebra-lemma-unique in Markdown" }],
       "Zebra-lemma-unique",

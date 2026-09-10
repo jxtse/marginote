@@ -38,4 +38,10 @@ it("rewrites responsive srcset candidates through the asset API and drops unsafe
   expect(rewriteSrcset("a.png,b.png", "paper/main.md")).toBe("/api/assets?path=paper%2Fa.png%2Cb.png");
   expect(rewriteSrcset("data:image/png;base64,AAAA 1x, b.png 2x", "paper/main.md")).toBe("data:image/png;base64,AAAA 1x, /api/assets?path=paper%2Fb.png 2x");
   expect(rewriteSrcset("a.png 1x,b.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fa.png 1x, /api/assets?path=paper%2Fb.png 2x");
+  // WHATWG descriptor grammar: density is any valid float, width a positive integer; a
+  // candidate may not mix them or repeat; a stray parenthesis only swallows to ")".
+  expect(rewriteSrcset("a.png .5x, b.png 1e2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fa.png .5x, /api/assets?path=paper%2Fb.png 1e2x");
+  expect(rewriteSrcset("a.png 1w 2x, b.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fb.png 2x");
+  expect(rewriteSrcset("a.png 0w, b.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fb.png 2x");
+  expect(rewriteSrcset("a.png ((x), b.png 2x", "paper/main.md")).toBe("/api/assets?path=paper%2Fb.png 2x");
 });

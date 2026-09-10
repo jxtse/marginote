@@ -34,7 +34,16 @@ it("invokes an OS sandbox with offline untrusted argv and a bounded runner", asy
       return;
     }
     expect(await tectonicCompiler(input)).toBe("ok");
-    const [command, args, options] = spawn.mock.calls[0]!;
+    const [shell, spawned, options] = spawn.mock.calls[0]!;
+    // rlimit prologue: constant script text, then positional limits, then the real argv.
+    expect(shell).toBe("/bin/sh");
+    expect(spawned[0]).toBe("-c");
+    expect(spawned[1]).toMatch(/^ulimit -f "\$1"/);
+    expect(spawned[1]).not.toContain("/vault");
+    expect(spawned[2]).toBe("marginote-rlimit");
+    expect(spawned[3]).toBe(String(128 * 1024));
+    expect(spawned[4]).toBe(process.platform === "linux" ? String(4 * 1024 * 1024) : "-");
+    const [command, ...args] = spawned.slice(5) as string[];
     expect(args).toEqual(expect.arrayContaining(["--untrusted", "--only-cached", "--synctex", "--keep-logs", "--outdir", "/tmp/out", "/vault/paper/main.tex"]));
     expect(options).toMatchObject({ shell: false, cwd: "/vault/paper", stdio: ["ignore", "pipe", "pipe"] });
     expect(options.env).not.toHaveProperty("TECTONIC_UNTRUSTED_MODE");
