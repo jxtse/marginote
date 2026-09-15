@@ -38,6 +38,7 @@ import { collectReceipt, renderReceipt } from "./receipt.js";
 import { isRequestAllowed, isSafeDocPath } from "./security.js";
 import { ASSET_MIME, MediaError, readVaultFile } from "./assets.js";
 import { LatexRenderer, type LatexCompiler } from "./latex.js";
+import { texDiagnostics } from "./latex-synctex.js";
 import { ShareRegistry, type ShareRole } from "./sharing.js";
 import { searchDocuments, searchVault } from "./search.js";
 import { Room } from "./room.js";
@@ -72,6 +73,8 @@ export interface MarginoteServerOptions extends VaultOptions {
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".wasm": "application/wasm",
   ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml",
   ".json": "application/json; charset=utf-8",
@@ -114,6 +117,9 @@ export class MarginoteServer {
     for (const event of ["doc:written", "doc:open", "doc:delete", "doc:rename"]) {
       vault.on(event, () => this.publish("files"));
     }
+    for (const event of ["file:change", "doc:written", "doc:change"]) {
+      vault.on(event, ({ path }: { path: string }) => this.publish("latex", { path }));
+    }
   }
 
   /**
@@ -137,8 +143,8 @@ export class MarginoteServer {
     this.roomSweep.unref?.();
   }
 
-  private publish(kind: string): void {
-    const payload = `data: ${JSON.stringify({ kind, files: this.vault.list() })}\n\n`;
+  private publish(kind: string, details: Record<string, unknown> = {}): void {
+    const payload = `data: ${JSON.stringify({ kind, files: this.vault.list(), ...details })}\n\n`;
     for (const stream of this.eventStreams) {
       try {
         stream.write(payload);
@@ -239,11 +245,28 @@ export class MarginoteServer {
       res.end(JSON.stringify(body));
     };
 
-    if (url.pathname === "/api/assets" || url.pathname === "/api/latex") {
+    if (url.pathname === "/api/assets" || url.pathname === "/api/latex" || url.pathname.startsWith("/api/latex/")) {
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'");
       res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+      if (url.pathname.startsWith("/api/latex/")) {
+        const route = url.pathname.slice("/api/latex/".length);
+        if (!["project", "mapping", "check"].includes(route)) { json({ error: "Unknown LaTeX endpoint" }, 404); return; }
+        if (req.method !== (route === "check" ? "POST" : "GET")) { json({ error: "Method not allowed" }, 405); return; }
+        const client = new AbortController();
+        const onClose = (): void => client.abort();
+        req.once("close", onClose);
+        try {
+          if (route === "project") json(await this.latex.project(url.searchParams.get("doc") ?? "", url.searchParams.get("entry") || undefined));
+          else if (route === "mapping") json(this.latex.mapping(url.searchParams.get("id") ?? ""));
+          else json(await this.latex.check(client.signal));
+        } catch (error) {
+          const failure = error instanceof MediaError ? error : new MediaError(error instanceof Error ? error.message : "LaTeX check failed", 500, "latex_failed");
+          json({ code: failure.code, error: failure.message, log: failure.log }, failure.status);
+        } finally { req.removeListener("close", onClose); }
+        return;
+      }
       const latex = url.pathname === "/api/latex";
       if (req.method !== (latex ? "POST" : "GET")) { json({ code: "method_not_allowed", error: "Method not allowed" }, 405); return; }
       try {
@@ -253,10 +276,10 @@ export class MarginoteServer {
           const client = new AbortController();
           const onClose = (): void => client.abort();
           req.once("close", onClose);
-          let rendered: { pdf: Buffer; hash: string };
+          let rendered: Awaited<ReturnType<LatexRenderer["render"]>>;
           try { rendered = await this.latex.render(url.searchParams.get("doc") ?? "", client.signal); }
           finally { req.removeListener("close", onClose); }
-          res.writeHead(200, { "content-type": "application/pdf", "x-source-hash": rendered.hash });
+          res.writeHead(200, { "content-type": "application/pdf", "x-source-hash": rendered.hash, "x-project-hash": rendered.projectHash, "x-compile-id": rendered.id });
           res.end(rendered.pdf);
         } else {
           const path = url.searchParams.get("path") ?? "";
@@ -266,7 +289,9 @@ export class MarginoteServer {
         }
       } catch (error) {
         const failure = error instanceof MediaError ? error : new MediaError("Unable to read vault media", 500, "media_failed");
-        json({ code: failure.code, error: failure.message, log: failure.log }, failure.status);
+        json({ code: failure.code, error: failure.message, log: failure.log,
+          diagnostics: latex ? texDiagnostics(failure.log, url.searchParams.get("doc") ?? "", this.vault.list()) : [],
+        }, failure.status);
       }
       return;
     }

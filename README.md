@@ -77,7 +77,9 @@ after three minutes, and failures surface in agent status/Settings.
 
 ## Advanced usage
 
-LaTeX entry points (`.tex`) have compiler-backed PDF preview with Tectonic; Markdown
+LaTeX (`.tex`) has Tectonic PDF preview with main-document selection, automatic
+dependency refresh, retained page/zoom, line-level source navigation, completion,
+compiler diagnostics and an offline setup check; Markdown
 supports relative vault images and PDF figure links. See [LaTeX and image setup](docs/latex-and-images.md)
 for the offline cache and OS sandbox prerequisites, security limits, and verification commands.
 

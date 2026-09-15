@@ -23,8 +23,13 @@ for (const required of ["dist/marginote.js", "dist/marginote-mcp.js", "web/index
 if (await exists("web/assets")) {
   const assets = await readdir(join(cli, "web/assets"));
   if (!assets.some((f) => f.endsWith(".js"))) problems.push("web/assets contains no JavaScript");
+  if (!assets.some((f) => /^pdf\.worker.*\.mjs$/.test(f))) problems.push("missing local PDF.js worker");
 } else {
   problems.push("missing web/assets — the client was not built");
+}
+
+for (const required of ["web/pdfjs/standard_fonts/FoxitSerif.pfb", "web/pdfjs/cmaps/78-EUC-H.bcmap", "web/pdfjs/wasm/openjpeg.wasm"]) {
+  if (!(await exists(required))) problems.push(`missing local PDF resource ${required}`);
 }
 
 for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {

@@ -358,6 +358,12 @@ export class Vault extends EventEmitter {
     watcher.on("add", (abs) => void this.onAdd(abs));
     watcher.on("change", (abs) => void this.onChange(abs));
     watcher.on("unlink", (abs) => void this.onUnlink(abs));
+    // Assets and bibliography files are not collaborative documents, but may invalidate a PDF.
+    watcher.on("all", (event, abs) => {
+      if (!["add", "change", "unlink"].includes(event)) return;
+      const path = this.toRel(abs);
+      if (path) this.emit("file:change", { path });
+    });
     watcher.on("error", (err) => this.emit("error", err));
 
     this.watcher = watcher;

@@ -1,11 +1,14 @@
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { access, lstat, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { constants, type Dirent } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, delimiter, dirname, extname, join } from "node:path";
+import { basename, delimiter, dirname, extname, join, posix } from "node:path";
 import type { Vault } from "@marginote/bridge";
 import { MediaError, readBoundedFile, readVaultFile, vaultFile } from "./assets.js";
+import { resolveTexEntry, texSymbols } from "./latex-project.js";
+import { parseSyncTex, type TexLocation } from "./latex-synctex.js";
 
 export interface CompileInput {
   root: string;
@@ -23,23 +26,27 @@ const SNAPSHOT_MAX_FILES = 5_000;
 const SNAPSHOT_MAX_BYTES = 256 * 1024 * 1024;
 const SNAPSHOT_MAX_ENTRIES = 50_000;
 
-async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entryName: string, signal?: AbortSignal): Promise<{ entryPath: string; entryHash: string }> {
+async function snapshotLatexProject(liveRoot: string, snapshotRoot: string | null, entryName: string, signal?: AbortSignal) {
   let files = 0;
   let bytes = 0;
   let visited = 0;
   let entryHash = "";
+  const projectHash = createHash("sha256");
+  const sources: Record<string, string> = {};
+  const hashes: Record<string, string> = {};
+  let sourceBytes = 0;
   const copyDirectory = async (relativeDir: string): Promise<void> => {
     if (signal?.aborted) throw new MediaError("Compilation cancelled", 422, "compile_failed");
     const sourceDir = relativeDir ? join(liveRoot, relativeDir) : liveRoot;
-    const targetDir = relativeDir ? join(snapshotRoot, relativeDir) : snapshotRoot;
+    const targetDir = snapshotRoot && (relativeDir ? join(snapshotRoot, relativeDir) : snapshotRoot);
     // Node's readdir reads a directory in one call; bounding here is what keeps a single
     // enormous directory from consuming the whole entry budget before any check runs.
-    const entries = await readdir(sourceDir, { withFileTypes: true });
+    const entries = (await readdir(sourceDir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, "en"));
     // Reserve this directory's entries up front so a deep subtree cannot spend the
     // budget that the remaining entries of its parent still need.
     visited += entries.length;
     if (visited > SNAPSHOT_MAX_ENTRIES) throw new MediaError("LaTeX project directory has too many entries to snapshot", 413, "project_limit");
-    await mkdir(targetDir, { recursive: true });
+    if (targetDir) await mkdir(targetDir, { recursive: true });
     for (const entry of entries) {
       if (signal?.aborted) throw new MediaError("Compilation cancelled", 422, "compile_failed");
       if ([".git", ".marginote", "node_modules"].includes(entry.name)) continue;
@@ -54,13 +61,21 @@ async function snapshotLatexProject(liveRoot: string, snapshotRoot: string, entr
       if (files > SNAPSHOT_MAX_FILES || bytes > SNAPSHOT_MAX_BYTES) {
         throw new MediaError("LaTeX project snapshot exceeds 5,000 files or 256 MiB", 413, "project_limit");
       }
-      await writeFile(join(snapshotRoot, relativePath), data, { flag: "wx" });
-      if (relativePath === entryName) entryHash = createHash("sha256").update(data).digest("hex");
+      if (snapshotRoot) await writeFile(join(snapshotRoot, relativePath), data, { flag: "wx" });
+      const hash = createHash("sha256").update(data).digest("hex");
+      hashes[relativePath] = hash;
+      projectHash.update(JSON.stringify([relativePath, hash]));
+      if ([".tex", ".bib"].includes(extension)) {
+        sourceBytes += data.length;
+        if (sourceBytes > 32 * 1024 * 1024) throw new MediaError("TeX sources exceed 32 MiB", 413, "project_limit");
+        sources[relativePath] = data.toString("utf8");
+      }
+      if (relativePath === entryName) entryHash = hash;
     }
   };
   await copyDirectory("");
   if (!entryHash) throw new MediaError("TeX entry disappeared before compilation", 409, "source_changed");
-  return { entryPath: join(snapshotRoot, entryName), entryHash };
+  return { entryPath: join(snapshotRoot ?? liveRoot, entryName), entryHash, projectHash: projectHash.digest("hex"), sources, hashes };
 }
 
 /**
@@ -274,7 +289,7 @@ export function runBounded(command: string, args: string[], options: {
         // reparented to init and the ppid walk can no longer find them. They may also
         // have left our process group or session (bwrap --new-session), so the group
         // kill alone is not enough.
-        reaping = descendantPids(pid, options.budget?.psCommand).then((pids) => {
+        reaping = descendantPids(pid, options.budget?.psCommand).catch(() => []).then((pids) => {
           for (const descendant of pids) { try { process.kill(descendant, "SIGKILL"); } catch {} }
           try { process.kill(-pid, "SIGKILL"); } catch {}
           try { child.kill("SIGKILL"); } catch {}
@@ -380,6 +395,8 @@ export const latexRuntimePaths = { sandboxExec: "/usr/bin/sandbox-exec" };
 
 export const tectonicCompiler: LatexCompiler = async ({ root, entryPath, outputDir, signal }) => {
   const tectonic = await executable("tectonic");
+  try { await processTreeRss(process.pid); }
+  catch { throw new MediaError("Process accounting is unavailable; refusing to start a compiler that cannot be monitored", 503, "sandbox_unavailable"); }
   const cache = process.platform === "darwin"
     ? join(homedir(), "Library/Caches/TectonicProject.Tectonic")
     : join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "Tectonic");
@@ -438,18 +455,79 @@ export const tectonicCompiler: LatexCompiler = async ({ root, entryPath, outputD
   });
 };
 
+interface RenderedLatex { pdf: Buffer; hash: string; projectHash: string; id: string }
 export class LatexRenderer {
-  private readonly active = new Map<string, { task: Promise<{ pdf: Buffer; hash: string }>; waiters: number; controller: AbortController }>();
+  private readonly active = new Map<string, { task: Promise<RenderedLatex>; waiters: number; controller: AbortController }>();
+  private readonly maps = new Map<string, { entry: string; projectHash: string; hashes: Record<string, string>; locations: TexLocation[]; created: number }>();
   private readonly abort = new AbortController();
+  private inspection: { key: string; task: ReturnType<LatexRenderer["inspectProject"]> } | undefined;
   constructor(private readonly vault: Vault, private readonly compiler: LatexCompiler = tectonicCompiler) {}
+
+  project(doc: string, preferred?: string) {
+    const key = JSON.stringify([doc, preferred]);
+    if (this.inspection) {
+      if (this.inspection.key === key) return this.inspection.task;
+      return Promise.reject(new MediaError("Another project is being inspected; retry shortly", 429, "project_busy"));
+    }
+    const task = this.inspectProject(doc, preferred).finally(() => { if (this.inspection?.task === task) this.inspection = undefined; });
+    this.inspection = { key, task };
+    return task;
+  }
+
+  private async inspectProject(doc: string, preferred?: string) {
+    await vaultFile(this.vault.root, doc, [".tex"]);
+    await this.vault.flush();
+    const resolved = await resolveTexEntry(this.vault, doc, preferred);
+    if (!resolved.entry) return { doc, entry: null, candidates: resolved.candidates, source: "", revision: "", docHash: createHash("sha256").update(resolved.sources.get(doc)!).digest("hex"), hashes: {}, labels: [], citations: [] };
+    const entryPath = await vaultFile(this.vault.root, resolved.entry, [".tex"]);
+    const snapshot = await snapshotLatexProject(dirname(entryPath), null, basename(entryPath));
+    return {
+      doc, entry: resolved.entry, candidates: [...new Set([...resolved.candidates, resolved.entry])],
+      source: snapshot.sources[basename(entryPath)], revision: snapshot.projectHash,
+      docHash: createHash("sha256").update(resolved.sources.get(doc)!).digest("hex"),
+      hashes: Object.fromEntries(Object.entries(snapshot.hashes).filter(([file]) => /\.tex$/i.test(file)).map(([file, hash]) => [posix.join(posix.dirname(resolved.entry!), file), hash])),
+      ...texSymbols(snapshot.sources),
+    };
+  }
+
+  mapping(id: string) {
+    const map = this.maps.get(id);
+    if (!map || Date.now() - map.created > 30 * 60_000) {
+      this.maps.delete(id);
+      throw new MediaError("PDF navigation expired; recompile the document", 404, "preview_expired");
+    }
+    return map;
+  }
+
+  /** Real offline probe, sharing the compile slot and shutdown/cancellation lifecycle. */
+  async check(signal?: AbortSignal): Promise<{ ok: true }> {
+    await this.execute("__runtime_check__", async (signal) => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), "marginote-tex-check-")));
+      try {
+        const outputDir = join(root, "output");
+        await mkdir(outputDir);
+        const entryPath = join(root, "check.tex");
+        await writeFile(entryPath, "\\documentclass{article}\n\\begin{document}\n\\section{Environment check}\nText, \\textbf{bold}, \\textit{italic}, and $E=mc^2$.\n\\end{document}\n");
+        await this.compiler({ root, entryPath, outputDir, signal });
+        const pdf = await readBoundedFile(join(outputDir, "check.pdf"));
+        if (!pdf.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new MediaError("The environment check did not produce a PDF", 422, "compile_failed");
+        return { pdf, hash: "", projectHash: "", id: "" };
+      } finally { await rm(root, { recursive: true, force: true }); }
+    }, signal);
+    return { ok: true };
+  }
 
   /**
    * Compile `path`. Concurrent requests for the same entry share one compilation; when
    * every requester's `signal` aborts (browser navigated away, socket closed) the
    * compiler is killed so an orphaned 120 s job cannot hold the single slot hostage.
    */
-  async render(path: string, signal?: AbortSignal): Promise<{ pdf: Buffer; hash: string }> {
+  async render(path: string, signal?: AbortSignal): Promise<RenderedLatex> {
     const entryPath = await vaultFile(this.vault.root, path, [".tex"]);
+    return this.execute(path, (signal) => this.compile(path, entryPath, signal), signal);
+  }
+
+  private async execute(path: string, compile: (signal: AbortSignal) => Promise<RenderedLatex>, signal?: AbortSignal): Promise<RenderedLatex> {
     if (this.abort.signal.aborted) throw new MediaError("Server is closing", 503, "closing");
     if (signal?.aborted) throw new MediaError("Client disconnected", 499, "client_closed");
     let entry = this.active.get(path);
@@ -458,7 +536,7 @@ export class LatexRenderer {
       const controller = new AbortController();
       const forward = (): void => controller.abort();
       this.abort.signal.addEventListener("abort", forward, { once: true });
-      const task = this.compile(path, entryPath, controller.signal).finally(() => {
+      const task = compile(controller.signal).finally(() => {
         this.abort.signal.removeEventListener("abort", forward);
         if (this.active.get(path) === entry) this.active.delete(path);
       });
@@ -480,7 +558,7 @@ export class LatexRenderer {
     }
   }
 
-  private async compile(path: string, entryPath: string, signal: AbortSignal): Promise<{ pdf: Buffer; hash: string }> {
+  private async compile(path: string, entryPath: string, signal: AbortSignal): Promise<RenderedLatex> {
     let temporaryRoot: string | undefined;
     try {
       await this.vault.flush();
@@ -496,7 +574,17 @@ export class LatexRenderer {
       try { pdf = await readBoundedFile(join(outputDir, `${basename(path).replace(/\.tex$/i, "")}.pdf`)); }
       catch { throw new MediaError("Tectonic did not produce a readable fresh PDF", 422, "compile_failed", log); }
       if (!pdf.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new MediaError("Compiler output is not a PDF", 422, "compile_failed", log);
-      return { pdf, hash: snapshot.entryHash };
+      let locations: TexLocation[] = [];
+      try {
+        const compressed = await readBoundedFile(join(outputDir, `${basename(path).replace(/\.tex$/i, "")}.synctex.gz`), 8 * 1024 * 1024);
+        const decoded = gunzipSync(compressed, { maxOutputLength: 16 * 1024 * 1024 }).toString("utf8");
+        locations = parseSyncTex(decoded, snapshotRoot, posix.dirname(path), new Set(Object.keys(snapshot.hashes)));
+      } catch { /* Navigation is optional; invalid or oversized maps never invalidate a PDF. */ }
+      const id = randomUUID();
+      const hashes = Object.fromEntries(Object.entries(snapshot.hashes).filter(([file]) => /\.tex$/i.test(file)).map(([file, hash]) => [posix.join(posix.dirname(path), file), hash]));
+      this.maps.set(id, { entry: path, projectHash: snapshot.projectHash, hashes, locations, created: Date.now() });
+      while (this.maps.size > 4) this.maps.delete(this.maps.keys().next().value!);
+      return { pdf, hash: snapshot.entryHash, projectHash: snapshot.projectHash, id };
     } catch (error) {
       if (error instanceof MediaError) throw error;
       throw new MediaError(error instanceof Error ? error.message : "Compilation failed", 422, "compile_failed");
@@ -508,5 +596,7 @@ export class LatexRenderer {
     // Wait for the compile promises themselves, not the bookkeeping wrappers, so that
     // temporary snapshot/output directories are removed before the process exits.
     await Promise.allSettled([...this.active.values()].map((entry) => entry.task));
+    await this.inspection?.task.catch(() => {});
+    this.maps.clear();
   }
 }

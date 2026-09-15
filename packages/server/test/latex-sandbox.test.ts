@@ -8,7 +8,7 @@ import { latexRuntimePaths, tectonicCompiler } from "../src/latex.js";
 
 const spawn = vi.hoisted(() => vi.fn());
 // The ulimit unit probe and descendant enumeration use execFile; answer like macOS sh.
-const execFile = vi.hoisted(() => vi.fn((_cmd: string, _args: string[], _opts: unknown, cb: (e: null, out: string) => void) => { cb(null, "blocks\n"); }));
+const execFile = vi.hoisted(() => vi.fn((_cmd: string, args: string[], _opts: unknown, cb: (e: null, out: string) => void) => { cb(null, args.includes("pid=,ppid=,rss=") ? `${process.pid} 1 1024\n` : "blocks\n"); }));
 vi.mock("node:child_process", () => ({ spawn, execFile }));
 afterEach(() => { vi.unstubAllEnvs(); spawn.mockReset(); });
 

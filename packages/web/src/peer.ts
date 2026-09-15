@@ -65,7 +65,7 @@ function wire(doc: Y.Doc, channel: RTCDataChannel): void {
   channel.binaryType = "arraybuffer";
 
   const send = (payload: Uint8Array): void => {
-    if (channel.readyState === "open") channel.send(payload);
+    if (channel.readyState === "open") channel.send(new Uint8Array(payload));
   };
 
   doc.on("update", (update: Uint8Array, origin: unknown) => {

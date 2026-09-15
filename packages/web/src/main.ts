@@ -1,7 +1,11 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { documentLanguage } from "./document-language.js";
 import { documentMode } from "./media.js";
-import { LatexPreview } from "./latex-preview.js";
+import { sourceHash } from "./latex-preview.js";
+import { LatexWorkspace } from "./latex-workspace.js";
+import { latexExtensions } from "./latex-editor.js";
+import { setDiagnostics } from "@codemirror/lint";
+import { committedToFull, fullToCommitted } from "@marginote/bridge/attribution";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { yCollab } from "y-codemirror.next";
@@ -63,34 +67,44 @@ const pathEl = $("#docpath");
 const presenceEl = $("#presence");
 const editorEl = $("#editor");
 const previewEl = $("#preview");
-const latexPreview = new LatexPreview((state) => {
-  previewEl.classList.add("latex-preview");
-  const status = document.createElement("div");
-  status.className = "latex-status";
-  status.setAttribute("role", "status");
-  status.textContent = state.status === "waiting" ? "Waiting to compile…" : state.status === "compiling" ? "Compiling LaTeX…" : state.status === "ready" ? "PDF compiled" : "LaTeX compilation failed";
-  previewEl.replaceChildren(status);
-  if (state.status === "ready") {
-    const link = document.createElement("a");
-    link.href = state.url;
-    link.target = "_blank";
-    link.rel = "noopener";
-    link.textContent = "Open PDF";
-    status.append(" · ", link);
-    const frame = document.createElement("iframe");
-    frame.className = "latex-pdf";
-    frame.title = "LaTeX PDF preview";
-    frame.src = `${state.url}#view=FitH`;
-    previewEl.append(frame);
-  } else if (state.status === "error") {
-    const error = document.createElement("pre");
-    error.className = "latex-error";
-    error.textContent = state.error;
-    const retry = document.createElement("button");
-    retry.textContent = "Retry compilation";
-    retry.onclick = () => { latexPreview.reset(); void paintPreview(); };
-    previewEl.append(error, retry);
-  }
+const latexPreview = new LatexWorkspace(previewEl, {
+  current: () => {
+    if (!current || !view || !ytext || document.body.classList.contains("replaying")) return null;
+    const source = committedTextOf(ytext);
+    const offset = fullToCommitted(ytext, view.state.selection.main.head);
+    return { doc: current, source, line: source.slice(0, offset).split("\n").length };
+  },
+  navigate: async (file, line, hash) => {
+    if (!allFiles.includes(file)) { toast("Source file is no longer available.", true); return; }
+    if (current !== file) await open(file);
+    for (let attempt = 0; attempt < 30; attempt++) {
+      if (current !== file || !view || !ytext) return;
+      const editor = view; const text = ytext;
+      const source = committedTextOf(text);
+      if (!hash || await sourceHash(source) === hash) {
+        if (current !== file || view !== editor || ytext !== text || source !== committedTextOf(text)) return;
+        const lines = source.split("\n");
+        const offset = lines.slice(0, Math.max(0, Math.min(line - 1, lines.length - 1))).reduce((sum, text) => sum + text.length + 1, 0);
+        const anchor = committedToFull(ytext, offset);
+        view.dispatch({ selection: { anchor }, scrollIntoView: true }); view.focus(); return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    toast("Source changed since compilation; recompile before jumping to this line.", true);
+  },
+  diagnostics: async (diagnostics, hashes) => {
+    const editor = view; const text = ytext; const path = current;
+    if (!editor || !text || !path || documentMode(path) !== "stex") return;
+    const source = committedTextOf(text);
+    const matching = hashes[path] === await sourceHash(source);
+    if (editor !== view || text !== ytext || source !== committedTextOf(text)) return;
+    const lines = source.split("\n");
+    editor.dispatch(setDiagnostics(editor.state, matching ? diagnostics.filter(d => d.file === path).map(d => {
+      const offset = lines.slice(0, Math.max(0, Math.min(d.line - 1, lines.length - 1))).reduce((sum, line) => sum + line.length + 1, 0);
+      const from = committedToFull(text, offset);
+      return { from, to: from, severity: "error" as const, message: d.message };
+    }) : []));
+  },
 });
 window.addEventListener("pagehide", () => latexPreview.reset());
 const suggestionsEl = $("#suggestions");
@@ -911,7 +925,7 @@ async function paintPreview(): Promise<void> {
     // A newly opened CRDT is briefly empty before its initial sync arrives. Clearing also
     // guarantees that intentionally emptying a synced file cannot leave a stale PDF visible.
     if (source.trim()) latexPreview.schedule(current, source);
-    else latexPreview.clear();
+    else if (!offline && provider?.synced) latexPreview.clear();
     return;
   }
   latexPreview.reset();
@@ -934,9 +948,11 @@ async function paintPreview(): Promise<void> {
 }
 
 async function open(path: string): Promise<void> {
-  latexPreview.reset();
-  previewEl.classList.remove("latex-preview");
-  previewEl.replaceChildren();
+  if (!current || documentMode(current) !== "stex" || documentMode(path) !== "stex") {
+    latexPreview.reset();
+    previewEl.classList.remove("latex-preview");
+    previewEl.replaceChildren();
+  }
   navigation.reset();
   view?.destroy();
   provider?.destroy();
@@ -963,6 +979,7 @@ async function open(path: string): Promise<void> {
     if (provider !== nextProvider) return;
     offline = !connected;
     setStatus(connected ? "live" : "offline", connected);
+    if (nextProvider.synced) void paintPreview();
   });
   provider = nextProvider;
   registerLocalAuthor(doc, me.id, me.name, me.color);
@@ -979,6 +996,7 @@ async function open(path: string): Promise<void> {
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         documentLanguage(path),
+        ...(documentMode(path) === "stex" ? latexExtensions(() => latexPreview.symbols) : []),
         marginoteEditorTheme,
         marginoteHighlight,
         EditorView.lineWrapping,
@@ -1531,7 +1549,8 @@ async function boot(): Promise<void> {
   // Push, not poll: a file an agent or the registry just created should appear at once.
   const events = new EventSource("/api/events");
   events.onmessage = (message) => {
-    const data = JSON.parse(message.data) as { kind: string; files: string[] };
+    const data = JSON.parse(message.data) as { kind: string; files: string[]; path?: string };
+    if (data.kind === "latex") { latexPreview.changed(data.path); return; }
     if (data.kind !== "files") return;
     const changed = data.files.join("\u0000") !== allFiles.join("\u0000");
     if (!changed) return;

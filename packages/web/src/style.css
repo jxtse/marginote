@@ -318,6 +318,26 @@ main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-
 #preview .latex-status { flex: none; padding: 10px 16px; font: 13px/1.5 system-ui, sans-serif; }
 #preview .latex-pdf { flex: 1; min-height: 0; width: 100%; border: 0; background: #525659; }
 #preview .latex-error { padding: 16px; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; }
+#preview .latex-toolbar, #preview .latex-pdf-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; flex: none; font: 12px/1.5 system-ui, sans-serif; }
+#preview .latex-toolbar select { min-width: 100px; max-width: 240px; }
+#preview .latex-toolbar button, #preview .latex-toolbar select, #preview .latex-pdf-controls button, #preview .latex-pdf-controls select, #preview .latex-pdf-controls input { font: inherit; padding: 5px 8px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--surface); color: var(--text); }
+#preview .latex-toolbar button, #preview .latex-pdf-controls button { cursor: pointer; }
+#preview .latex-toolbar button:disabled { opacity: .5; cursor: default; }
+#preview .latex-toolbar :focus-visible, #preview .latex-pdf-controls :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#preview .latex-pdf { display: flex; flex-direction: column; min-height: 160px; }
+#preview .latex-pdf-controls { background: var(--overlay); color: var(--text); border-top: 1px solid var(--rule); }
+#preview .latex-pdf-controls input { width: 56px; }
+#preview .latex-pdf-viewport { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+#preview .latex-paper { position: relative; background: white; margin: 0 auto; flex: none; }
+#preview .latex-paper canvas { display: block; }
+#preview .latex-paper .textLayer { --min-font-size: 1; }
+#preview .latex-target { position: absolute; pointer-events: none; background: #ffd54f66; outline: 2px solid #f9a825; z-index: 3; }
+#preview .latex-errors, #preview .latex-check-result { flex: none; max-height: 35%; overflow: auto; font: 12px/1.5 system-ui, sans-serif; }
+#preview .latex-errors:empty, #preview .latex-check-result:empty { display: none; }
+#preview .latex-errors > *, #preview .latex-check-result > * { margin: 8px 12px; }
+#preview .latex-check-result { padding: 0 12px 8px; color: var(--subtle); }
+#preview .latex-errors button { display: block; text-align: left; }
+#preview .latex-check-result pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sync-nav-flash {
   animation: sync-nav-flash 1.2s ease-out;
 }

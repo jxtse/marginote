@@ -1,7 +1,7 @@
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from "y-protocols/awareness";
-import { readSyncMessage, writeSyncStep1, writeUpdate } from "y-protocols/sync";
+import { messageYjsSyncStep2, readSyncMessage, writeSyncStep1, writeUpdate } from "y-protocols/sync";
 import type * as Y from "yjs";
 
 const MSG_SYNC = 0;
@@ -14,6 +14,7 @@ const MSG_EPOCH = 2;
  * and a document path is not a room name.
  */
 export class SyncProvider {
+  synced = false;
   readonly awareness: Awareness;
   private ws: WebSocket | null = null;
   private retry = 0;
@@ -74,7 +75,10 @@ export class SyncProvider {
       const type = decoding.readVarUint(decoder);
       if (type === MSG_SYNC) {
         encoding.writeVarUint(enc, MSG_SYNC);
-        readSyncMessage(decoder, enc, this.doc, this);
+        if (readSyncMessage(decoder, enc, this.doc, this) === messageYjsSyncStep2) {
+          this.synced = true;
+          this.onStatus(true);
+        }
         if (encoding.length(enc) > 1) ws.send(encoding.toUint8Array(enc));
       } else if (type === MSG_AWARENESS) {
         applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(decoder), this);
@@ -93,6 +97,7 @@ export class SyncProvider {
     };
 
     ws.onclose = () => {
+      this.synced = false;
       this.onStatus(false);
       if (this.closed) return;
       // Back off, but stay responsive: a dropped laptop lid should reconnect quickly.

@@ -1,6 +1,14 @@
 import { defineConfig } from "vite";
+import { cp } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+
+const pdfjsRoot = dirname(createRequire(import.meta.url).resolve("pdfjs-dist/package.json"));
 
 export default defineConfig({
+  plugins: [{ name: "local-pdf-resources", async closeBundle() {
+    for (const directory of ["cmaps", "standard_fonts", "wasm"]) await cp(resolve(pdfjsRoot, directory), resolve("dist/pdfjs", directory), { recursive: true });
+  } }],
   build: {
     outDir: "dist",
     emptyOutDir: true,
