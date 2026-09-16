@@ -76,7 +76,7 @@ await cp(join(root, "plugins"), join(out, "plugins"), {
 });
 await mkdir(join(out, "registry"), { recursive: true });
 await cp(join(root, "registry/index.json"), join(out, "registry/index.json"));
-for (const file of ["README.md", "LICENSE", "SECURITY.md"]) {
+for (const file of ["README.md", "README.zh-CN.md", "LICENSE", "SECURITY.md"]) {
   await cp(join(root, file), join(out, file));
 }
 

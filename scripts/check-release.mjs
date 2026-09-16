@@ -19,7 +19,7 @@ for (const required of ["docs/artifact-conversations.md", "docs/html-artifacts.m
   if (!(await exists(required))) problems.push(`missing ${required} — run: npm run build:release`);
 }
 
-for (const required of ["dist/marginote.js", "dist/marginote-mcp.js", "web/index.html", "registry/index.json", "LICENSE"]) {
+for (const required of ["dist/marginote.js", "dist/marginote-mcp.js", "web/index.html", "registry/index.json", "README.zh-CN.md", "LICENSE"]) {
   if (!(await exists(required))) problems.push(`missing ${required} — run: npm run build:release`);
 }
 
