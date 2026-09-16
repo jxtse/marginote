@@ -157,7 +157,7 @@ it("reports failures without serving a stale PDF", async () => {
   compiler.mockResolvedValue("no PDF produced");
   expect((await request("paper/main.tex", "latex")).status).toBe(422);
 });
-it.each([["png", "image/png"], ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"], ["gif", "image/gif"], ["webp", "image/webp"], ["svg", "image/svg+xml"], ["pdf", "application/pdf"]])("serves %s with correct MIME and sandbox headers", async (extension, mime) => {
+it.each([["png", "image/png"], ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"], ["gif", "image/gif"], ["webp", "image/webp"], ["svg", "image/svg+xml"], ["pdf", "application/pdf"], ["css", "text/css"], ["js", "text/javascript"], ["woff2", "font/woff2"]])("serves %s with correct MIME and sandbox headers", async (extension, mime) => {
   await writeFile(join(root, `paper/image.${extension}`), "fixture");
   const response = await request(`paper/image.${extension}`);
   expect(response.status).toBe(200);

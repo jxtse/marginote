@@ -42,7 +42,8 @@ import { texDiagnostics } from "./latex-synctex.js";
 import { ShareRegistry, type ShareRole } from "./sharing.js";
 import { searchDocuments, searchVault } from "./search.js";
 import { Room } from "./room.js";
-import { EmbeddedAgent, maskedConfig, testConnection } from "@marginote/agent";
+import { VaultLease } from "./vault-lease.js";
+import { ArtifactConversations, NativeConversationProvider, EmbeddedAgent, maskedConfig, testConnection, type ConversationProvider } from "@marginote/agent";
 
 export interface MarginoteServerOptions extends VaultOptions {
   port?: number;
@@ -68,6 +69,8 @@ export interface MarginoteServerOptions extends VaultOptions {
    */
   allowExec?: boolean;
   latexCompiler?: LatexCompiler;
+  /** Override the native provider when embedding/testing; never accepted from HTTP input. */
+  conversationProvider?: ConversationProvider;
 }
 
 const MIME: Record<string, string> = {
@@ -83,6 +86,7 @@ const MIME: Record<string, string> = {
 export class MarginoteServer {
   private readonly latex: LatexRenderer;
   readonly agent: EmbeddedAgent;
+  readonly conversations: ArtifactConversations;
   /** Capability links. In memory only, so they never outlive the session that made them. */
   readonly shares = new ShareRegistry();
 
@@ -98,6 +102,7 @@ export class MarginoteServer {
   readonly rooms = new Map<string, Room>();
   private http: Server | null = null;
   private wss: WebSocketServer | null = null;
+  private closing: Promise<void> | null = null;
 
   readonly git: GitSnapshotter | null;
   /** Whether the vault is a git repository, so the UI can hide snapshotting when it is not. */
@@ -106,9 +111,11 @@ export class MarginoteServer {
   private constructor(
     readonly vault: Vault,
     private readonly opts: MarginoteServerOptions,
+    private readonly lease: VaultLease,
   ) {
     this.latex = new LatexRenderer(vault, opts.latexCompiler);
-    this.agent = new EmbeddedAgent(vault);
+    this.conversations = new ArtifactConversations(vault, opts.conversationProvider ?? new NativeConversationProvider(vault.root), path => this.publish("conversation", { path }));
+    this.agent = new EmbeddedAgent(vault, undefined, undefined, path => this.conversations.owns(path));
     this.git = opts.git ? new GitSnapshotter(vault, opts.git) : null;
 
     // Files created by an agent, by the registry, or by another tool used to require a
@@ -133,8 +140,9 @@ export class MarginoteServer {
   private startRoomSweep(): void {
     this.roomSweep = setInterval(() => {
       for (const [path, room] of this.rooms) {
-        if (room.size === 0 && !this.agent.busy(room)) {
+        if (room.size === 0 && !this.agent.busy(room) && !this.conversations.busy(path)) {
           this.agent.detach(room);
+          this.conversations.detach(room);
           room.destroy();
           this.rooms.delete(path);
         }
@@ -155,15 +163,34 @@ export class MarginoteServer {
   }
 
   static async start(options: MarginoteServerOptions): Promise<MarginoteServer> {
-    const vault = await Vault.open(options);
-    const server = new MarginoteServer(vault, options);
-    try { await server.agent.config.load(); }
-    catch (error) { server.agent.lastError = "Unable to load agent configuration"; console.error("[marginote agent] config", error); }
-    await server.listen();
-    server.gitReady = Boolean(server.git && (await server.git.isRepo()));
-    if (server.gitReady) server.git?.start();
-    server.startRoomSweep();
-    return server;
+    // Acquire before indexing, opening CRDT storage, or dispatching any agent work.
+    const lease = await VaultLease.acquire(options.root);
+    let server: MarginoteServer | undefined;
+    let vault: Vault | undefined;
+    try {
+      vault = await Vault.open({ ...options, root: lease.root });
+      server = new MarginoteServer(vault, options, lease);
+      lease.signal.addEventListener("abort", () => {
+        console.error("[marginote] Runtime ownership lost; stopping this server.");
+        void server!.close().catch(error => console.error("[marginote] shutdown", error));
+      }, { once: true });
+      // Corrupt session routing must fail closed, never silently fall back to pi.
+      await server.conversations.load();
+      try { await server.agent.config.load(); }
+      catch (error) { server.agent.lastError = "Unable to load agent configuration"; console.error("[marginote agent] config", error); }
+      lease.signal.throwIfAborted();
+      await server.listen();
+      server.gitReady = Boolean(server.git && (await server.git.isRepo()));
+      lease.signal.throwIfAborted();
+      if (server.gitReady) server.git?.start();
+      server.startRoomSweep();
+      for (const path of server.conversations.paths()) if (vault.list().includes(path)) server.room(path);
+      return server;
+    } catch (error) {
+      if (server) await server.close();
+      else { try { await vault?.close(); } finally { await lease.release(); } }
+      throw error;
+    }
   }
 
   get port(): number {
@@ -182,6 +209,7 @@ export class MarginoteServer {
       room = new Room(this.vault.getDoc(path), this.epoch);
       this.rooms.set(path, room);
       this.agent.attach(room);
+      this.conversations.attach(room);
     }
     return room;
   }
@@ -206,6 +234,8 @@ export class MarginoteServer {
         socket.destroy();
       };
 
+      if (this.closing || this.lease.signal.aborted) return reject("503 Service Unavailable");
+
       if (!isRequestAllowed(req, { allowedHosts: this.opts.allowedHosts ?? [] })) {
         return reject("403 Forbidden");
       }
@@ -226,12 +256,16 @@ export class MarginoteServer {
     this.http = http;
     this.wss = wss;
 
-    await new Promise<void>((resolve) =>
-      http.listen(this.opts.port ?? 4321, this.opts.host ?? "127.0.0.1", resolve),
-    );
+    await new Promise<void>((resolve, reject) => {
+      http.once("error", reject);
+      http.listen(this.opts.port ?? 4321, this.opts.host ?? "127.0.0.1", () => { http.removeListener("error", reject); resolve(); });
+    });
   }
 
   private async onRequest(req: IncomingMessage, res: import("node:http").ServerResponse): Promise<void> {
+    if (this.closing || this.lease.signal.aborted) {
+      res.writeHead(503); res.end("Marginote is stopping"); return;
+    }
     if (!isRequestAllowed(req, { allowedHosts: this.opts.allowedHosts ?? [] })) {
       res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
       res.end("Forbidden: this Marginote server only answers its own origin.");
@@ -304,11 +338,31 @@ export class MarginoteServer {
       }
       res.setHeader("Cache-Control", "no-store");
       try {
-        if (url.pathname === "/api/agent/config" && req.method === "GET") json(maskedConfig(this.agent.config.current));
+        if (url.pathname === "/api/agent/conversation" && req.method === "GET") {
+          const path = url.searchParams.get("doc") ?? "";
+          json(this.conversations.status(path));
+        }
+        else if (url.pathname.startsWith("/api/agent/conversation") && req.method === "POST") {
+          const input = JSON.parse(await readBody(req, 32768));
+          if (typeof input?.doc !== "string" || !this.vault.list().includes(input.doc)) { json({ error: "Document not found" }, 404); return; }
+          if (url.pathname === "/api/agent/conversation") {
+            const room = this.room(input.doc);
+            if (this.agent.busy(room)) { json({ error: "Wait for the embedded agent to finish before handing off" }, 409); return; }
+            json(await this.conversations.bind(room, input.origin), 201);
+          } else if (url.pathname === "/api/agent/conversation/decision") {
+            if (typeof input.id !== "string" || typeof input.accepted !== "boolean") throw new Error("Invalid approval decision");
+            this.conversations.decide(input.doc, input.id, input.accepted); json({ ok: true });
+          } else if (url.pathname === "/api/agent/conversation/retry") {
+            this.room(input.doc); await this.conversations.retry(input.doc); json({ ok: true });
+          } else if (url.pathname === "/api/agent/conversation/disconnect") {
+            await this.conversations.unbind(input.doc); json({ ok: true });
+          } else json({ error: "Unknown conversation endpoint" }, 404);
+        }
+        else if (url.pathname === "/api/agent/config" && req.method === "GET") json(maskedConfig(this.agent.config.current));
         else if (url.pathname === "/api/agent/config" && req.method === "POST") json(await this.agent.config.save(JSON.parse(await readBody(req, 32768))));
         else if (url.pathname === "/api/agent/status" && req.method === "GET") {
           const path = url.searchParams.get("doc");
-          json({ ...this.agent.status, ...(path ? { busy: this.vault.list().includes(path) && this.agent.busy(this.room(path)) } : {}) });
+          json({ ...this.agent.status, ...(path ? { busy: this.vault.list().includes(path) && (this.agent.busy(this.room(path)) || this.conversations.busy(path)), conversation: this.conversations.status(path) } : {}) });
         }
         else if (url.pathname === "/api/agent/grill" && req.method === "POST") {
           const input = JSON.parse(await readBody(req, 32768));
@@ -747,13 +801,22 @@ export class MarginoteServer {
       return;
     }
 
-    res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
+    // srcdoc previews may run local report scripts but must never navigate their
+    // frame to a remote page. This policy also applies to nested-frame navigation.
+    res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream",
+      ...(extname(file) === ".html" ? { "content-security-policy": "frame-src 'none'" } : {}) });
     createReadStream(file).pipe(res);
   }
 
-  async close(): Promise<void> {
-    await this.latex.close();
+  close(): Promise<void> {
+    return this.closing ??= this.shutdown();
+  }
+
+  private async shutdown(): Promise<void> {
+    // Abort native work immediately, even if a compiler is still cleaning up.
+    const conversationsClosed = this.conversations.close();
     this.agent.close();
+    await Promise.all([this.latex.close(), conversationsClosed]);
     if (this.roomSweep) clearInterval(this.roomSweep);
     this.roomSweep = null;
     for (const stream of this.eventStreams) stream.end();
@@ -767,6 +830,7 @@ export class MarginoteServer {
       this.http.close(() => resolve());
     });
     await this.vault.close();
+    await this.lease.release();
   }
 }
 

@@ -1,4 +1,5 @@
 import { markdown } from "@codemirror/lang-markdown";
+import { html } from "@codemirror/lang-html";
 import { StreamLanguage, type StreamParser } from "@codemirror/language";
 import { documentMode } from "./media.js";
 
@@ -35,5 +36,5 @@ export const stex: StreamParser<TexState> = {
 };
 const latexLanguage = StreamLanguage.define(stex);
 export function documentLanguage(path: string) {
-  return documentMode(path) === "stex" ? latexLanguage : markdown();
+  return documentMode(path) === "stex" ? latexLanguage : documentMode(path) === "html" ? html() : markdown();
 }

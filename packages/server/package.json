@@ -14,15 +14,17 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@marginote/agent": "*",
     "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@marginote/agent": "*",
     "@marginote/bridge": "*",
     "lib0": "^0.2.99",
+    "proper-lockfile": "4.1.2",
     "ws": "^8.18.0",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.21"
   },
   "devDependencies": {
+    "@types/proper-lockfile": "4.1.4",
     "@types/ws": "^8.5.13"
   },
   "main": "./dist/src/index.js"

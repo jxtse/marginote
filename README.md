@@ -4,9 +4,9 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](./LICENSE)
 
-**Local-first collaborative Markdown and LaTeX, with an agent in the margin.**
+**Local-first collaborative Markdown, HTML and LaTeX, with an agent in the margin.**
 
-Write in plain Markdown or LaTeX, collaborate live, and ask for help where the words are.
+Write in Markdown, HTML or LaTeX, collaborate live, and ask for help where the words are.
 Select text, leave a comment, and the embedded agent reads it immediately — with the
 full document, the thread history, and the exact range you marked. It answers on the
 thread, proposes reviewable edits that never touch the file until you accept them,
@@ -56,7 +56,7 @@ No account or signup. Core editing works without a key. Press `Ctrl+C` to stop.
 
 ## Your files, your provider
 
-The filesystem remains the source of truth. Point Marginote at any Markdown folder or LaTeX project:
+The filesystem remains the source of truth. Point Marginote at a Markdown/HTML folder or LaTeX project:
 
 ```bash
 marginote ~/my-notes
@@ -77,6 +77,22 @@ after three minutes, and failures surface in agent status/Settings.
 
 ## Advanced usage
 
+HTML (`.html`, `.htm`) reports retain their local styles and scripts in an isolated
+preview. Select rendered text to discuss it, navigate between source and preview, and
+export the original HTML. See [HTML artifacts](docs/html-artifacts.md) for supported
+assets, dynamic-content boundaries and validation.
+
+**Development preview:** this checkout can attach an exact Codex, Claude Code or Hermes delivery boundary and
+continue a native fork through document comments. Its originating conversation history
+stays with the document discussion. See [artifact conversations](docs/artifact-conversations.md)
+and the repository [plugin](plugins/marginote/skills/artifact-review/SKILL.md). The standalone
+pi agent remains available. Attached native editing tools propose version-checked changes
+for human acceptance. The Claude adapter has native fork and protocol checks, but its
+live-model workflow remains unverified. Hermes now has a native continuation adapter,
+verified with an isolated local model fixture, including editing and one-time permission
+denial. See its [native plugin setup](plugins/marginote-hermes/README.md).
+Real-model validation across all adapters and enforced native edit routing remain unfinished.
+
 LaTeX (`.tex`) has Tectonic PDF preview with main-document selection, automatic
 dependency refresh, retained page/zoom, line-level source navigation, completion,
 compiler diagnostics and an offline setup check; Markdown
@@ -95,6 +111,10 @@ host configuration; see [SECURITY.md](SECURITY.md). `--no-discover` disables dis
 traffic, not an agent you explicitly configure. `--no-persist` makes collaboration
 metadata temporary; document edits still save to disk. `--allow-exec` explicitly
 enables local fenced-code execution and is separate from the embedded agent sandbox.
+
+One Marginote runtime owns each vault, including `--no-persist` sessions. Reuse its
+existing URL rather than launching a second server for another document. Normal shutdown
+releases ownership; after a crash, allow up to two minutes before restarting.
 
 External MCP collaborators can still join through `marginote-mcp`; the embedded agent
 needs no separate MCP client. See [docs/](docs/) for the inherited workflows and details.

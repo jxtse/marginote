@@ -47,7 +47,7 @@ interface RecentAdd {
 }
 
 const DEFAULTS = {
-  extensions: [".md", ".markdown", ".tex"],
+  extensions: [".md", ".markdown", ".tex", ".html", ".htm"],
   writeDebounceMs: 40,
   stabilityThresholdMs: 60,
   renameGraceMs: 300,

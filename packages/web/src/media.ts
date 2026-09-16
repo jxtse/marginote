@@ -1,5 +1,5 @@
-export function documentMode(path: string): "stex" | "markdown" {
-  return /\.tex$/i.test(path) ? "stex" : "markdown";
+export function documentMode(path: string): "stex" | "markdown" | "html" {
+  return /\.tex$/i.test(path) ? "stex" : /\.html?$/i.test(path) ? "html" : "markdown";
 }
 
 export function imageAssetUrl(reference: string, documentPath: string): string | null {
@@ -60,7 +60,7 @@ function validDescriptors(descriptors: string[]): boolean {
   return !(height && !width);
 }
 
-export function rewriteSrcset(srcset: string, documentPath: string): string {
+export function rewriteSrcset(srcset: string, documentPath: string, resolve = imageAssetUrl): string {
   const candidates: string[] = [];
   let position = 0;
   while (position < srcset.length) {
@@ -84,7 +84,7 @@ export function rewriteSrcset(srcset: string, documentPath: string): string {
       descriptors = srcset.slice(descriptorStart, position).replace(ASCII_TRIM, "").split(ASCII_WHITESPACE_RUN).filter(Boolean);
     }
     if (!url) continue;
-    const resolved = imageAssetUrl(url, documentPath);
+    const resolved = resolve(url, documentPath);
     if (!resolved) continue;
     if (!validDescriptors(descriptors)) continue;
     candidates.push([resolved, ...descriptors].join(" "));

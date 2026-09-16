@@ -22,6 +22,8 @@ export interface ToolContext {
   snapshot: string;
   suggestions: string[];
   replies: string[];
+  /** Native artifact discussions retain deleted quotes; edits use a fresh source revision. */
+  allowOrphanedThread?: boolean;
   grill?: { findings: number; summary: boolean };
   humanCursors: () => Array<{ name: string; index: number }>;
 }
@@ -33,7 +35,7 @@ function ensureActive(context: ToolContext): void {
   if (!context.active || context.handle.deleted) throw new Error("This agent run is no longer active");
   if (context.grill) return;
   const thread = new CommentStore(context.handle.doc).list().find(entry => entry.id === context.threadId);
-  if (!thread || thread.resolved || thread.orphaned) throw new Error("The comment is resolved, orphaned or gone");
+  if (!thread || thread.resolved || (thread.orphaned && !context.allowOrphanedThread)) throw new Error("The comment is resolved, orphaned or gone");
 }
 
 export function summaryQuote(text: string): string {

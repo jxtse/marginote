@@ -544,8 +544,7 @@ button.revert:hover { border-color: color-mix(in srgb, var(--remove) 50%, transp
 /* ── responsive ──────────────────────────────────────────────────────── */
 
 @media (max-width: 1180px) {
-  body { --rail-w: 0px; --rail-rz: 0px; }
-  #rail, #rz-rail { display: none; }
+  body { --sidebar-w: 180px; --rail-w: 280px; }
 }
 @media (max-width: 820px) {
   body { --sidebar-w: 0px; --sidebar-rz: 0px; --rail-w: 0px; --rail-rz: 0px; }
@@ -996,3 +995,22 @@ body.commenting #editor { opacity: 0.92; }
   font-size: 11.5px; font-weight: 550; letter-spacing: -0.005em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.artifact-conversation { padding: 12px; margin: 0 0 12px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--surface); font-size: 12px; }
+.artifact-conversation p { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.artifact-conversation details { margin: 8px 0; }
+.artifact-conversation pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+.artifact-conversation button, .reply-composer button { padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--base); color: var(--text); font: inherit; cursor: pointer; }
+.artifact-conversation button { margin: 6px 6px 0 0; }
+.artifact-conversation button:disabled, .reply-composer button:disabled { opacity: .5; cursor: wait; }
+#grill-btn[hidden] { display: none; }
+.artifact-conversation button:focus-visible, .reply-composer textarea:focus-visible, .reply-composer button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.reply-composer textarea { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; resize: vertical; font: inherit; color: inherit; background: transparent; border: 1px solid var(--rule); border-radius: 6px; padding: 8px; }
+.reply-composer button { margin-right: 6px; }
+
+#preview.html-preview { padding: 0; max-width: none; display: flex; flex-direction: column; overflow: hidden; }
+.html-preview iframe { flex: 1; min-height: 0; width: 100%; border: 0; background: white; }
+.html-toolbar { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px; border-bottom: 1px solid var(--rule); font: 12px var(--font-ui); background: var(--surface); }
+.html-toolbar button { padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--base); color: var(--text); font: inherit; cursor: pointer; }
+.html-toolbar button:disabled { opacity: .5; cursor: default; }
+.html-toolbar button[hidden] { display: none; }
+.html-status { width: 100%; color: var(--subtle); font: 12px var(--font-ui); }
