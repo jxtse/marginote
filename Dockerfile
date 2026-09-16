@@ -8,6 +8,8 @@ COPY package.json package-lock.json tsconfig.base.json tsconfig.json vitest.conf
 COPY packages ./packages
 COPY registry ./registry
 COPY scripts ./scripts
+COPY docs ./docs
+COPY plugins ./plugins
 COPY README.md LICENSE SECURITY.md ./
 RUN npm ci && npm run build:release && node scripts/check-release.mjs
 
@@ -18,6 +20,8 @@ WORKDIR /app
 COPY --from=build /src/packages/cli/dist ./dist
 COPY --from=build /src/packages/cli/web ./web
 COPY --from=build /src/packages/cli/registry ./registry
+COPY --from=build /src/packages/cli/docs ./docs
+COPY --from=build /src/packages/cli/plugins ./plugins
 COPY --from=build /src/packages/cli/package.json ./package.json
 
 # Run as an unprivileged user. The vault is mounted, so it is the only thing writable.

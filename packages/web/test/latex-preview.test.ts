@@ -52,11 +52,13 @@ it("keeps the last successful PDF during edits and errors, but discards it on pr
   const fetcher = vi.fn().mockResolvedValueOnce(new Response("%PDF", { headers: { "x-source-hash": await sourceHash("one") } })).mockResolvedValueOnce(new Response(JSON.stringify({ error: "broken" }), { status: 422 }));
   const show = vi.fn(); const controller = new LatexPreview(show, fetcher);
   controller.schedule("main.tex", "one"); await vi.advanceTimersByTimeAsync(700);
+  // WebCrypto and response bodies are asynchronous beyond the fake timer queue.
+  await vi.waitFor(() => expect(show).toHaveBeenLastCalledWith({ status: "ready", url: "blob:kept" }));
   controller.schedule("main.tex", "two");
   expect(revoke).not.toHaveBeenCalled();
   expect(show).toHaveBeenLastCalledWith({ status: "waiting", url: "blob:kept" });
   await vi.advanceTimersByTimeAsync(700);
-  expect(show).toHaveBeenLastCalledWith({ status: "error", error: "broken", url: "blob:kept" });
+  await vi.waitFor(() => expect(show).toHaveBeenLastCalledWith({ status: "error", error: "broken", url: "blob:kept" }));
   controller.schedule("other.tex", "three");
   expect(revoke).toHaveBeenCalledWith("blob:kept"); controller.reset();
 });
@@ -92,7 +94,7 @@ it("keeps waiting while the single compile slot is busy for longer than eight qu
   controller.schedule("main.tex", "busy");
   await vi.advanceTimersByTimeAsync(60_000);
   expect(fetcher).toHaveBeenCalledTimes(13);
-  expect(show).toHaveBeenLastCalledWith({ status: "ready", url: "blob:late" });
+  await vi.waitFor(() => expect(show).toHaveBeenLastCalledWith({ status: "ready", url: "blob:late" }));
   expect(show).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
   controller.reset();
 });
