@@ -134,6 +134,18 @@ npx playwright test --project=chromium
 `npm run check:release` checks that package. [CHANGELOG.md](CHANGELOG.md) retains the
 upstream history beneath the Marginote additions.
 
+To build and run the Docker image against an existing vault:
+
+```bash
+docker build -t marginote:local .
+docker run --rm --user "$(id -u):$(id -g)" -p 127.0.0.1:4321:4321 \
+  -v "$PWD/notes:/vault" marginote:local
+```
+
+Create `notes` first, or substitute a vault you own. Linux bind mounts retain host
+ownership, so the container must use a UID/GID that can write the vault and its
+`.marginote` metadata. The example publishes the service only on local loopback.
+
 ## Acknowledgements and license
 
 - Heet Dalsania and the Quire contributors built the collaborative core.

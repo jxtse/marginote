@@ -5,6 +5,9 @@ import { expect, it } from "vitest";
 import { ULIMIT_PROBE_NODE, runBounded, processTreeRss, resetUlimitUnitProbe } from "../src/latex.js";
 
 const base = { timeoutMs: 10_000, maxOutputBytes: 1024 };
+// Process accounting, shell fixtures and rlimits require POSIX. Keep the portable
+// runner tests on Windows; latex-sandbox.test.ts verifies its unsupported-platform refusal.
+const itPosix = it.skipIf(process.platform === "win32");
 
 it("captures direct argv output without a shell", async () => {
   expect(await runBounded(process.execPath, ["-e", "console.log(process.argv[1])", "$(echo unsafe)"], { cwd: process.cwd(), timeoutMs: 1000, maxOutputBytes: 1024 })).toContain("$(echo unsafe)");
@@ -20,12 +23,12 @@ async function withDir(run: (dir: string) => Promise<void>): Promise<void> {
   try { await run(dir); } finally { await rm(dir, { recursive: true, force: true }); }
 }
 
-it("kills a compiler that fills the output directory beyond the byte budget", () => withDir(async (dir) => {
+itPosix("kills a compiler that fills the output directory beyond the byte budget", () => withDir(async (dir) => {
   const script = `const fs=require("fs");let i=0;setInterval(()=>fs.writeFileSync(process.argv[1]+"/aux"+(i++), Buffer.alloc(1<<20)),5)`;
   await expect(runBounded(process.execPath, ["-e", script, dir], { ...base, cwd: dir, budget: { directory: dir, maxDirectoryBytes: 4 << 20, maxRssBytes: 1 << 30, intervalMs: 20 } })).rejects.toThrow(/generated more than/);
 }));
 
-it("kills a compiler process tree whose resident memory exceeds the budget, including grandchildren", () => withDir(async (dir) => {
+itPosix("kills a compiler process tree whose resident memory exceeds the budget, including grandchildren", () => withDir(async (dir) => {
   // Parent stays tiny; a detached grandchild in a new session does the allocating, so
   // only a ppid-walk (not pgid/sid selection) can attribute the memory to this job.
   const grandchild = `const a=[];setInterval(()=>{a.push(Buffer.alloc(32<<20,1))},5)`;
@@ -38,7 +41,7 @@ it("kills a compiler process tree whose resident memory exceeds the budget, incl
   expect(survivors).toEqual([]);
 }));
 
-it("fails closed when process accounting is unavailable while the compiler is alive", () => withDir(async (dir) => {
+itPosix("fails closed when process accounting is unavailable while the compiler is alive", () => withDir(async (dir) => {
   await expect(runBounded(process.execPath, ["-e", "setInterval(()=>{},100)"], { ...base, cwd: dir, budget: { directory: dir, maxDirectoryBytes: 1 << 30, maxRssBytes: 1 << 30, intervalMs: 20, psCommand: "/nonexistent/ps" } })).rejects.toThrow(/accounting/);
 }));
 
@@ -48,7 +51,7 @@ it("rejects a compiler that exceeded the output budget before the first sample c
   await expect(runBounded(process.execPath, ["-e", script, dir], { ...base, cwd: dir, budget: { directory: dir, maxDirectoryBytes: 4 << 20, maxRssBytes: 1 << 30, intervalMs: 60_000 } })).rejects.toThrow(/generated more than/);
 }));
 
-it("enforces a per-file size hard limit through the OS before the compiler starts", () => withDir(async (dir) => {
+itPosix("enforces a per-file size hard limit through the OS before the compiler starts", () => withDir(async (dir) => {
   const script = `require("fs").writeFileSync(process.argv[1]+"/big", Buffer.alloc(5<<20)); console.log("wrote")`;
   await expect(runBounded(process.execPath, ["-e", script, dir], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).rejects.toThrow();
   const { stat } = await import("node:fs/promises");
@@ -56,7 +59,7 @@ it("enforces a per-file size hard limit through the OS before the compiler start
   expect(size).toBeLessThanOrEqual(2 << 20);
 }));
 
-it("refuses to start the compiler when the ulimit unit cannot be determined, and recovers once it can", () => withDir(async (dir) => {
+itPosix("refuses to start the compiler when the ulimit unit cannot be determined, and recovers once it can", () => withDir(async (dir) => {
   // Probe with an unwritable directory: no positive identification -> fail closed, and
   // the failure must not be cached.
   const { mkdir, chmod } = await import("node:fs/promises");
@@ -70,7 +73,7 @@ it("refuses to start the compiler when the ulimit unit cannot be determined, and
   } finally { await chmod(locked, 0o700); resetUlimitUnitProbe(); }
 }));
 
-it("waits for a late memory verdict's termination work before settling", () => withDir(async (dir) => {
+itPosix("waits for a late memory verdict's termination work before settling", () => withDir(async (dir) => {
   const { writeFile, chmod } = await import("node:fs/promises");
   const pidFile = join(dir, "child.pid");
   const marker = join(dir, "ps-done");
@@ -85,7 +88,7 @@ it("waits for a late memory verdict's termination work before settling", () => w
   await expect(access(marker)).resolves.toBeUndefined();
 }));
 
-it("processTreeRss sums descendants found through the ppid chain", async () => {
+itPosix("processTreeRss sums descendants found through the ppid chain", async () => {
   const rss = await processTreeRss(process.pid, "ps");
   expect(rss).toBeGreaterThan(1 << 20);
   await expect(processTreeRss(process.pid, "/nonexistent/ps")).rejects.toThrow();
@@ -98,7 +101,7 @@ it("does not attribute an unrelated failure to the per-file limit because prose 
   await expect(runBounded(process.execPath, ["-e", real], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).rejects.toThrow(/most likely the 1 MiB per-file limit/);
 }));
 
-it("ulimit unit probe reports unknown unless the kernel itself signals RLIMIT_FSIZE", () => withDir(async (dir) => {
+itPosix("ulimit unit probe reports unknown unless the kernel itself signals RLIMIT_FSIZE", () => withDir(async (dir) => {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const { writeFile, chmod, readdir } = await import("node:fs/promises");
@@ -124,7 +127,7 @@ it("ulimit unit probe reports unknown unless the kernel itself signals RLIMIT_FS
   expect((await readdir(dir)).filter((name) => name.startsWith("marginote-ulimit-probe."))).toEqual([]);
 }));
 
-it("terminates idempotently: a flood of over-limit log chunks spawns at most one ps enumeration", () => withDir(async (dir) => {
+itPosix("terminates idempotently: a flood of over-limit log chunks spawns at most one ps enumeration", () => withDir(async (dir) => {
   // Emit many small chunks well past the log cap, each of which used to call kill() and
   // therefore start another `ps`. Count ps invocations through a counting wrapper.
   const { writeFile, chmod } = await import("node:fs/promises");
@@ -139,7 +142,7 @@ it("terminates idempotently: a flood of over-limit log chunks spawns at most one
   expect(invocations).toBeLessThanOrEqual(1);
 }));
 
-it("rejects a compiler whose memory sample came back over budget only after it exited", () => withDir(async (dir) => {
+itPosix("rejects a compiler whose memory sample came back over budget only after it exited", () => withDir(async (dir) => {
   // ps is delayed so its over-limit answer lands after the child has already closed. The
   // fake ps reports a huge RSS for the pid recorded by the child itself.
   const { writeFile, chmod } = await import("node:fs/promises");
@@ -151,18 +154,21 @@ it("rejects a compiler whose memory sample came back over budget only after it e
   await expect(runBounded(process.execPath, ["-e", script, pidFile], { ...base, cwd: dir, budget: { directory: dir, maxDirectoryBytes: 1 << 30, maxRssBytes: 64 << 20, intervalMs: 10, psCommand: slowPs } })).rejects.toThrow(/memory/);
 }));
 
-it("keeps sampling memory on schedule while a directory scan is slow", () => withDir(async (dir) => {
+itPosix("keeps sampling memory on schedule while a directory scan is slow", () => withDir(async (dir) => {
   // 12,000 empty files make each scan take noticeably longer than the 10 ms interval;
   // the allocator must still be killed by the memory check within a few intervals.
   const { writeFile } = await import("node:fs/promises");
-  await Promise.all(Array.from({ length: 12_000 }, (_, i) => writeFile(join(dir, `f${i}`), "")));
+  // Bound fixture creation so the test does not exhaust the runner's file handles.
+  for (let start = 0; start < 12_000; start += 64) {
+    await Promise.all(Array.from({ length: Math.min(64, 12_000 - start) }, (_, i) => writeFile(join(dir, `f${start + i}`), "")));
+  }
   const script = `const a=[];setInterval(()=>{a.push(Buffer.alloc(32<<20,1))},5)`;
   const started = Date.now();
   await expect(runBounded(process.execPath, ["-e", script], { ...base, cwd: dir, budget: { directory: dir, maxDirectoryBytes: 1 << 30, maxRssBytes: 128 << 20, intervalMs: 10 } })).rejects.toThrow(/memory/);
   expect(Date.now() - started).toBeLessThan(3_000);
 }));
 
-it("applies the exact per-file limit regardless of the shell's ulimit unit", () => withDir(async (dir) => {
+itPosix("applies the exact per-file limit regardless of the shell's ulimit unit", () => withDir(async (dir) => {
   // Write a file just under the limit (must succeed) and one just over (must be cut).
   const under = `require("fs").writeFileSync(process.argv[1]+"/under", Buffer.alloc((1<<20)-4096)); console.log("ok")`;
   expect(await runBounded(process.execPath, ["-e", under, dir], { ...base, cwd: dir, hardLimits: { maxFileBytes: 1 << 20 } })).toContain("ok");

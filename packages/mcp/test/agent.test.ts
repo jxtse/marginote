@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MarginoteServer } from "@marginote/server";
 import { type Author, acceptSuggestion, committedText, insertAttributed } from "@marginote/bridge";
 import { AgentSession } from "../src/session.js";
@@ -67,13 +67,15 @@ describe("agent sessions", () => {
   it("keeps a suggestion off disk, then lands it on accept", async () => {
     const s = await join_("doc.md");
     insertAttributed(s.text, s.text.length, "Proposed sentence.", agent, { suggestion: "s1" });
-    await sleep(400);
+    const human = server.vault.getDoc("doc.md");
+    await vi.waitFor(() => expect(human.text.toString()).toContain("Proposed sentence."));
+    await server.vault.flush();
 
     expect(await readFile(join(dir, "doc.md"), "utf8")).not.toContain("Proposed sentence.");
 
     // The human accepts, on the server's copy, exactly as the UI does.
-    acceptSuggestion(server.vault.getDoc("doc.md").text, "s1");
-    await sleep(400);
+    acceptSuggestion(human.text, "s1");
+    await server.vault.flush();
     expect(await readFile(join(dir, "doc.md"), "utf8")).toContain("Proposed sentence.");
   });
 

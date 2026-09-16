@@ -77,7 +77,8 @@ jobs:
       - name: Run it against a vault
         run: |
           mkdir -p /tmp/vault && printf '# Docker\n\nhello\n' > /tmp/vault/d.md
-          docker run -d --name marginote -p 4321:4321 -v /tmp/vault:/vault marginote:ci
+          # Bind mounts retain host ownership on Linux; use the vault owner's UID/GID.
+          docker run -d --name marginote --user "$(id -u):$(id -g)" -p 4321:4321 -v /tmp/vault:/vault marginote:ci
+          trap 'docker logs marginote; docker rm -f marginote >/dev/null' EXIT
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4321/api/files && break || sleep 1; done
           curl -fsS http://127.0.0.1:4321/api/files | grep -q d.md
-          docker logs marginote

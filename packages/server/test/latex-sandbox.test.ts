@@ -33,6 +33,7 @@ it("invokes an OS sandbox with offline untrusted argv and a bounded runner", asy
     const input = { root: "/vault", entryPath: "/vault/paper/main.tex", outputDir: "/tmp/out", signal: new AbortController().signal };
     if (!["darwin", "linux"].includes(process.platform)) {
       await expect(tectonicCompiler(input)).rejects.toMatchObject({ code: "sandbox_unavailable" });
+      expect(spawn).not.toHaveBeenCalled();
       return;
     }
     expect(await tectonicCompiler(input)).toBe("ok");
