@@ -15,6 +15,9 @@ const problems = [];
 
 const exists = async (p) => access(join(cli, p)).then(() => true).catch(() => false);
 if (!(await exists("docs/latex-and-images.md"))) problems.push("missing LaTeX runtime setup instructions");
+for (const required of ["docs/artifact-conversations.md", "docs/html-artifacts.md", "plugins/marginote/.codex-plugin/plugin.json", "plugins/marginote/.claude-plugin/plugin.json", "plugins/marginote/skills/artifact-review/SKILL.md"]) {
+  if (!(await exists(required))) problems.push(`missing ${required} — run: npm run build:release`);
+}
 
 for (const required of ["dist/marginote.js", "dist/marginote-mcp.js", "web/index.html", "registry/index.json", "LICENSE"]) {
   if (!(await exists(required))) problems.push(`missing ${required} — run: npm run build:release`);
@@ -43,8 +46,12 @@ for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
 
 const pkg = JSON.parse(await readFile(join(cli, "package.json"), "utf8"));
 const expectedLicense = "AGPL-3.0-or-later";
+for (const required of ["plugins/marginote-hermes/plugin.yaml", "plugins/marginote-hermes/__init__.py", "plugins/marginote-hermes/bridge.py", "plugins/marginote-hermes/runtime.py"]) {
+  if (!(await exists(required))) problems.push(`missing Hermes plugin file ${required}`);
+}
 const expectedBins = { marginote: "dist/marginote.js", "marginote-mcp": "dist/marginote-mcp.js" };
 const forbiddenInstallScripts = ["preinstall", "install", "postinstall"];
+if (!pkg.files?.includes("plugins/")) problems.push("package excludes the artifact review plugin");
 
 // The bundles must actually start. Nothing else here proves that.
 for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
@@ -84,7 +91,12 @@ for (const script of forbiddenInstallScripts) {
 for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
   if (!(await exists(entry))) continue;
   const body = await readFile(join(cli, entry), "utf8");
-  if (/\bGITHUB_TOKEN\b/.test(body)) {
+  // The pinned Claude SDK exports an environment-schema namespace whose getter
+  // names include GITHUB_TOKEN. That declaration is not a credential read.
+  // Ignore only esbuild's static namespace getter shape; property accesses,
+  // destructuring, string-key reads and copies of the name still fail this gate.
+  const credentialCode = body.replace(/\bGITHUB_TOKEN(?=:\s*\(\)\s*=>\s*[\w$]+\s*[,}])/g, "ENV_SCHEMA_NAME");
+  if (/\bGITHUB_TOKEN\b/.test(credentialCode)) {
     problems.push(`${entry} reads GITHUB_TOKEN; published Marginote must not forward ambient credentials`);
   }
 }

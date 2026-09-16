@@ -1,4 +1,6 @@
 node_modules/
+__pycache__/
+*.pyc
 dist/
 coverage/
 *.tsbuildinfo
@@ -17,6 +19,7 @@ packages/cli/dist/
 packages/cli/web/
 packages/cli/registry/
 packages/cli/docs/
+packages/cli/plugins/
 packages/cli/README.md
 packages/cli/LICENSE
 packages/cli/SECURITY.md

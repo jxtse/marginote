@@ -12,6 +12,8 @@ export class MediaError extends Error {
 export const ASSET_MIME: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".pdf": "application/pdf",
+  ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript",
+  ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf",
 };
 
 export async function vaultFile(root: string, path: string, extensions: readonly string[]): Promise<string> {

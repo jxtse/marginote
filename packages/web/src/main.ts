@@ -3,6 +3,7 @@ import { documentLanguage } from "./document-language.js";
 import { documentMode } from "./media.js";
 import { sourceHash } from "./latex-preview.js";
 import { LatexWorkspace } from "./latex-workspace.js";
+import { HtmlPreview } from "./html-preview.js";
 import { latexExtensions } from "./latex-editor.js";
 import { setDiagnostics } from "@codemirror/lint";
 import { committedToFull, fullToCommitted } from "@marginote/bridge/attribution";
@@ -27,6 +28,7 @@ import {
   copyRichText,
   copyToClipboard,
   downloadHtml,
+  downloadSource,
   downloadMarkdown,
   downloadText,
   printDocument,
@@ -34,6 +36,7 @@ import {
 import { applyLayout, getLayout, loadLayout, togglePanel, wireResizer } from "./layout.js";
 import { closeMenu, heading, hint, menuItem, openMenu, row, segmented, slider } from "./menus.js";
 import { agentRequest, wireAgentSettings } from "./agent-settings.js";
+import { ConversationPanel, type ConversationStatus } from "./conversation.js";
 import { answerPeer, offerPeer, type PeerHandle } from "./peer.js";
 import { configureSuggesting, isSuggesting, setSuggesting, suggestingExtension } from "./suggesting.js";
 import { onColorSchemeChange, renderPreview } from "./preview.js";
@@ -67,6 +70,29 @@ const pathEl = $("#docpath");
 const presenceEl = $("#presence");
 const editorEl = $("#editor");
 const previewEl = $("#preview");
+const htmlPreview = new HtmlPreview(previewEl, {
+  current: () => current && view && ytext && !document.body.classList.contains("replaying") ? {
+    doc: current, source: committedTextOf(ytext), offset: fullToCommitted(ytext, view.state.selection.main.head),
+  } : null,
+  select: (from, to) => {
+    if (!view || !ytext) return;
+    view.dispatch({ selection: { anchor: committedToFull(ytext, from), head: committedToFull(ytext, to) }, scrollIntoView: true });
+  },
+  comment: (from, to) => {
+    if (!ytext || shareRole === "view") return;
+    openComposer(committedToFull(ytext, from), committedToFull(ytext, to));
+  },
+  openLink: href => {
+    if (!current) return;
+    try {
+      if (/^https?:\/\//i.test(href)) { window.open(href, "_blank", "noopener,noreferrer"); return; }
+      const url = new URL(href, `https://vault.invalid/${current}`);
+      const path = decodeURIComponent(url.pathname.slice(1));
+      if (url.origin === "https://vault.invalid" && allFiles.includes(path)) void open(path);
+      else toast("This link does not point to a document in this vault.", true);
+    } catch { toast("Invalid document link.", true); }
+  },
+});
 const latexPreview = new LatexWorkspace(previewEl, {
   current: () => {
     if (!current || !view || !ytext || document.body.classList.contains("replaying")) return null;
@@ -107,6 +133,7 @@ const latexPreview = new LatexWorkspace(previewEl, {
   },
 });
 window.addEventListener("pagehide", () => latexPreview.reset());
+window.addEventListener("pagehide", () => htmlPreview.reset());
 const suggestionsEl = $("#suggestions");
 const commentsEl = $("#comments");
 const agentsEl = $("#agents");
@@ -146,6 +173,8 @@ const navigation = syncNavigation(previewEl, () =>
 );
 let comments: CommentStore | null = null;
 let current: string | null = null;
+const replyDrafts = new Map<string, string>();
+const openReplies = new Set<string>();
 const grillBtn = $<HTMLButtonElement>("#grill-btn");
 const onboarding = $("#agent-onboarding");
 let onboardingDismissed = false;
@@ -156,16 +185,20 @@ $("#agent-onboarding-dismiss").onclick = () => {
   try { localStorage.setItem("marginote-agent-onboarding-dismissed", "true"); } catch {}
 };
 let submittingGrill = false;
+const conversationPanel = new ConversationPanel(commentsEl.parentElement!, () => void refreshAgentStatus());
 async function refreshAgentStatus(): Promise<void> {
   const path = current;
   try {
-    const status = await agentRequest(`status${path ? `?doc=${encodeURIComponent(path)}` : ""}`) as { configured: boolean; busy?: boolean; lastError: string | null };
+    const status = await agentRequest(`status${path ? `?doc=${encodeURIComponent(path)}` : ""}`) as { configured: boolean; busy?: boolean; lastError: string | null; conversation?: ConversationStatus | null };
     if (path !== current) return;
-    onboarding.hidden = status.configured || onboardingDismissed;
-    grillBtn.disabled = !status.configured || !path || Boolean(status.busy) || submittingGrill;
+    conversationPanel.render(path, status.conversation ?? null);
+    grillBtn.hidden = Boolean(status.conversation);
+    onboarding.hidden = Boolean(status.conversation) || status.configured || onboardingDismissed;
+    grillBtn.disabled = Boolean(status.conversation) || !status.configured || !path || Boolean(status.busy) || submittingGrill;
     grillBtn.textContent = status.busy || submittingGrill ? "Working…" : "Grill me";
     grillBtn.setAttribute("aria-busy", String(Boolean(status.busy) || submittingGrill));
     grillBtn.title = !status.configured ? "Add an API key and model in Settings to Grill me" : status.lastError ? `Last agent error: ${status.lastError}` : status.busy ? "The agent is working on this document" : "Review this draft with anchored findings";
+    if (status.conversation) grillBtn.title = "Ask your original agent for a review in a comment";
   } catch { grillBtn.disabled = true; grillBtn.title = "Agent status unavailable"; }
 }
 grillBtn.onclick = async () => {
@@ -452,6 +485,7 @@ async function previewEntry(entry: RegistryEntry): Promise<void> {
     view?.destroy();
     view = null;
     latexPreview.reset();
+    htmlPreview.reset();
     previewEl.classList.remove("latex-preview");
     await renderPreview(previewEl, content.slice(0, 200_000), {
       resolveLink: () => null,
@@ -613,12 +647,14 @@ async function showFrame(index: number): Promise<void> {
     );
     if (token !== frameToken) return;
     latexPreview.reset();
+    htmlPreview.reset();
     previewEl.classList.remove("latex-preview");
     if (documentMode(current) === "stex") {
       const source = document.createElement("pre");
       source.textContent = text;
       previewEl.replaceChildren(source);
-    } else await renderPreview(previewEl, text, { resolveLink: () => null, onNavigate: () => {}, documentPath: current });
+    } else if (documentMode(current) === "html") htmlPreview.schedule(current, text);
+    else await renderPreview(previewEl, text, { resolveLink: () => null, onNavigate: () => {}, documentPath: current });
   } catch {
     if (token === frameToken) replayLabel.textContent = "could not load that moment";
   }
@@ -723,6 +759,8 @@ function renderPresence(): void {
 // ---------------------------------------------------------------- right rail
 
 function renderRail(): void {
+  const activeReply = document.activeElement instanceof HTMLTextAreaElement && document.activeElement.dataset.reply
+    ? { id: document.activeElement.dataset.reply, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd } : null;
   if (!ytext || !view) return;
   syncAuthors();
 
@@ -830,6 +868,16 @@ function renderRail(): void {
         };
         actions.append(assign);
 
+        const replyKey = `${current}\u0000${t.id}`;
+        if (shareRole !== "view") {
+          const reply = document.createElement("button"); reply.textContent = "Reply";
+          reply.onclick = () => {
+            openReplies.add(replyKey); renderRail();
+            commentsEl.querySelector<HTMLTextAreaElement>(`textarea[data-reply="${CSS.escape(t.id)}"]`)?.focus();
+          };
+          actions.append(reply);
+        }
+
         const resolve = document.createElement("button");
         resolve.textContent = t.resolved ? "Reopen" : "Resolve";
         resolve.onclick = () => { comments!.setResolved(t.id, !t.resolved); renderRail(); };
@@ -838,9 +886,34 @@ function renderRail(): void {
         del.onclick = () => { comments!.remove(t.id); renderRail(); };
         actions.append(resolve, del);
         card.append(actions);
+        if (openReplies.has(replyKey) && shareRole !== "view") {
+          const form = document.createElement("form"); form.className = "reply-composer";
+          const field = document.createElement("textarea"); field.rows = 3; field.placeholder = "Continue the conversation…";
+          field.setAttribute("aria-label", "Reply to comment"); field.dataset.reply = t.id; field.value = replyDrafts.get(replyKey) ?? "";
+          field.oninput = () => replyDrafts.set(replyKey, field.value);
+          const send = document.createElement("button"); send.type = "submit"; send.textContent = "Send reply";
+          const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Cancel";
+          cancel.onclick = () => { openReplies.delete(replyKey); renderRail(); };
+          form.append(field, send, cancel);
+          form.onsubmit = event => {
+            event.preventDefault(); const body = field.value.trim(); if (!body) return;
+            openReplies.delete(replyKey); replyDrafts.delete(replyKey);
+            comments!.reply(t.id, body, me.id, me.name); renderRail();
+          };
+          field.onkeydown = event => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); form.requestSubmit(); }
+            if (event.key === "Escape") { event.preventDefault(); cancel.click(); }
+          };
+          card.append(form);
+        }
         return card;
       }),
     );
+  }
+
+  if (activeReply?.id) {
+    const field = commentsEl.querySelector<HTMLTextAreaElement>(`textarea[data-reply="${CSS.escape(activeReply.id)}"]`);
+    field?.focus(); field?.setSelectionRange(activeReply.start, activeReply.end);
   }
 
   const agents = authorsPresent(ytext)
@@ -921,6 +994,7 @@ function attachRunButtons(): void {
 async function paintPreview(): Promise<void> {
   if (!view || !ytext || document.body.classList.contains("replaying")) return;
   if (current && documentMode(current) === "stex") {
+    htmlPreview.reset();
     const source = committedTextOf(ytext);
     // A newly opened CRDT is briefly empty before its initial sync arrives. Clearing also
     // guarantees that intentionally emptying a synced file cannot leave a stale PDF visible.
@@ -930,6 +1004,8 @@ async function paintPreview(): Promise<void> {
   }
   latexPreview.reset();
   previewEl.classList.remove("latex-preview");
+  if (current && documentMode(current) === "html") { htmlPreview.schedule(current, committedTextOf(ytext)); return; }
+  htmlPreview.reset();
   // Render the committed projection, so the preview always matches the file on disk
   // rather than splicing un-accepted suggestions into the prose.
   await renderPreview(previewEl, committedTextOf(ytext), {
@@ -948,6 +1024,7 @@ async function paintPreview(): Promise<void> {
 }
 
 async function open(path: string): Promise<void> {
+  htmlPreview.reset();
   if (!current || documentMode(current) !== "stex" || documentMode(path) !== "stex") {
     latexPreview.reset();
     previewEl.classList.remove("latex-preview");
@@ -1117,6 +1194,12 @@ exportBtn.onclick = () => {
   openMenu(exportBtn, (panel) => {
     const path = current ?? "document.md";
     const text = () => (ytext ? committedTextOf(ytext) : "");
+    if (documentMode(path) !== "markdown") {
+      const label = documentMode(path) === "html" ? "HTML" : "LaTeX";
+      panel.append(heading("Download"), menuItem(`${label} source`, "original format", () => downloadSource(path, text())),
+        heading("Copy"), menuItem(`Copy ${label}`, "source", () => void copyToClipboard(text()).then(() => toast(`${label} source copied`))));
+      return;
+    }
     panel.append(
       heading("Download"),
       menuItem("Markdown", ".md", () => downloadMarkdown(path, text())),
@@ -1544,13 +1627,14 @@ async function boot(): Promise<void> {
   const wanted = new URLSearchParams(location.search).get("doc");
   if (wanted && allFiles.includes(wanted)) await open(wanted);
   else if (allFiles[0]) await open(allFiles[0]);
-  else pathEl.textContent = "No Markdown files in this folder yet.";
+  else pathEl.textContent = "No Markdown, HTML or LaTeX documents in this folder yet.";
 
   // Push, not poll: a file an agent or the registry just created should appear at once.
   const events = new EventSource("/api/events");
   events.onmessage = (message) => {
     const data = JSON.parse(message.data) as { kind: string; files: string[]; path?: string };
-    if (data.kind === "latex") { latexPreview.changed(data.path); return; }
+    if (data.kind === "latex") { latexPreview.changed(data.path); htmlPreview.changed(data.path); return; }
+    if (data.kind === "conversation") { if (data.path === current) void refreshAgentStatus(); return; }
     if (data.kind !== "files") return;
     const changed = data.files.join("\u0000") !== allFiles.join("\u0000");
     if (!changed) return;

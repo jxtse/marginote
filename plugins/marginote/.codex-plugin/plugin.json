@@ -1,0 +1,20 @@
+{
+  "name": "marginote",
+  "version": "0.1.0",
+  "description": "Open delivered documents for local review and continue their native agent conversation.",
+  "license": "AGPL-3.0-or-later",
+  "repository": "https://github.com/jxtse/marginote",
+  "author": {
+    "name": "Marginote contributors"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Marginote",
+    "shortDescription": "Discuss delivered documents in the margin.",
+    "longDescription": "Launch the local editor for Markdown, HTML and LaTeX artifacts. Attach an exact agent delivery boundary so human annotations can continue its native conversation history.",
+    "developerName": "Marginote contributors",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": ["Open this report in Marginote so I can discuss it with you."]
+  }
+}

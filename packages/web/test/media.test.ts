@@ -8,6 +8,9 @@ it("selects TeX and Markdown modes", () => {
   expect(documentMode("MAIN.TEX")).toBe("stex");
   expect(documentMode("note.md")).toBe("markdown");
   expect(documentMode("note.markdown")).toBe("markdown");
+  expect(documentMode("report.HTML")).toBe("html");
+  expect(documentMode("report.htm")).toBe("html");
+  expect(documentLanguage("report.html")).toHaveProperty("language");
   expect(documentLanguage("main.tex")).toMatchObject({ name: "stex" });
   expect(documentLanguage("note.md")).toHaveProperty("language");
 });

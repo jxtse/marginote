@@ -28,12 +28,13 @@ export class EmbeddedAgent {
   private working = 0;
   private introduced = false;
   private readonly loops = new Map<AgentRoom, DocumentLoop>();
-  constructor(readonly vault: Vault, readonly sessionFactory = newSession, readonly timeoutMs = 180000) { this.config = new ConfigStore(vault.root); }
+  constructor(readonly vault: Vault, readonly sessionFactory = newSession, readonly timeoutMs = 180000, readonly externallyOwned: (path: string) => boolean = () => false) { this.config = new ConfigStore(vault.root); }
   get status() { return { configured: Boolean(this.config.current.apiKey && this.config.current.model), state: this.working ? "working" : "idle", lastError: this.lastError }; }
   attach(room: AgentRoom): void { if (!this.loops.has(room)) this.loops.set(room, new DocumentLoop(this, room)); }
   detach(room: AgentRoom): void { this.loops.get(room)?.dispose(); this.loops.delete(room); }
   busy(room: AgentRoom): boolean { return this.loops.get(room)?.busy ?? false; }
   grill(room: AgentRoom): string {
+    if (this.externallyOwned(room.handle.path)) throw new Error("This document uses its original agent conversation; ask for a review in a comment");
     if (!this.status.configured) throw new Error("Configure an API key and model in Settings first");
     if (room.handle.deleted || !room.handle.getContent().trim()) throw new Error("Choose a nonempty document to grill");
     this.attach(room);
@@ -83,6 +84,7 @@ class DocumentLoop {
     const isAgent = (id: string) => id === AGENT_ID || authors[id]?.kind === "agent";
     const previous = this.previous;
     this.previous = new Map(threads.map(thread => [thread.id, thread]));
+    if (this.agent.externallyOwned(this.room.handle.path)) return;
     for (const thread of threads) {
       if (!shouldTrigger(previous.get(thread.id), thread, isAgent)) continue;
       if (this.queue.includes(thread.id)) continue;
@@ -105,6 +107,7 @@ class DocumentLoop {
     finally { this.grills.delete(id); this.active = null; void this.drain(); }
   }
   private async run(id: string): Promise<void> {
+    if (this.agent.externallyOwned(this.room.handle.path)) return;
     const thread = this.store.list().find(entry => entry.id === id);
     const grill = this.grills.has(id);
     if ((!grill && (!thread || thread.resolved || thread.orphaned)) || this.room.handle.deleted) return;

@@ -17,6 +17,10 @@ const download = (blob: Blob, filename: string): void => {
 
 const baseName = (path: string): string => (path.split("/").pop() ?? path).replace(/\.(md|markdown)$/i, "");
 
+export function downloadSource(path: string, text: string): void {
+  download(new Blob([text], { type: /\.html?$/i.test(path) ? "text/html;charset=utf-8" : "text/plain;charset=utf-8" }), path.split("/").pop() ?? path);
+}
+
 export function downloadMarkdown(path: string, text: string): void {
   download(new Blob([text], { type: "text/markdown;charset=utf-8" }), `${baseName(path)}.md`);
 }

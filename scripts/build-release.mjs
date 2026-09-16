@@ -24,6 +24,7 @@ const external = [
 await rm(join(out, "dist"), { recursive: true, force: true });
 await rm(join(out, "web"), { recursive: true, force: true });
 await rm(join(out, "registry"), { recursive: true, force: true });
+await rm(join(out, "plugins"), { recursive: true, force: true });
 await mkdir(join(out, "dist"), { recursive: true });
 
 for (const [entry, name] of [
@@ -67,6 +68,12 @@ for (const [entry, name] of [
 await cp(join(root, "packages/web/dist"), join(out, "web"), { recursive: true });
 await mkdir(join(out, "docs"), { recursive: true });
 await cp(join(root, "docs/latex-and-images.md"), join(out, "docs/latex-and-images.md"));
+await cp(join(root, "docs/artifact-conversations.md"), join(out, "docs/artifact-conversations.md"));
+await cp(join(root, "docs/html-artifacts.md"), join(out, "docs/html-artifacts.md"));
+await cp(join(root, "plugins"), join(out, "plugins"), {
+  recursive: true,
+  filter: path => !path.split(/[\\/]/).includes("__pycache__") && !path.endsWith(".pyc"),
+});
 await mkdir(join(out, "registry"), { recursive: true });
 await cp(join(root, "registry/index.json"), join(out, "registry/index.json"));
 for (const file of ["README.md", "LICENSE", "SECURITY.md"]) {

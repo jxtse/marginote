@@ -1,0 +1,8 @@
+{
+  "name": "marginote",
+  "version": "0.1.0",
+  "description": "Review delivered documents locally and continue their native conversation history.",
+  "author": { "name": "Marginote contributors" },
+  "repository": "https://github.com/jxtse/marginote",
+  "license": "AGPL-3.0-or-later"
+}

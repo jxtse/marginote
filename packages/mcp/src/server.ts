@@ -293,6 +293,25 @@ export async function createQuireMcpServer(options: McpOptions): Promise<McpServ
   );
 
   server.registerTool(
+    "review_document",
+    {
+      title: "Open an artifact for conversation",
+      description: "Return a local review link. With an exact native session and completed delivery ID (Codex turn, Claude Code assistant message UUID, or Hermes message row ID), the human can connect a native fork. Never invent IDs or substitute a summary for conversation history.",
+      inputSchema: { path: z.string(), origin_provider: z.enum(["codex", "claude-code", "hermes"]).optional(), origin_session: z.string().regex(/^[\w-]{1,160}$/).optional(), origin_turn: z.string().regex(/^[\w-]{1,160}$/).optional() },
+    },
+    guard(async ({ path, origin_provider, origin_session, origin_turn }: { path: string; origin_provider?: "codex" | "claude-code" | "hermes" | undefined; origin_session?: string | undefined; origin_turn?: string | undefined }) => {
+      if (!(await listFiles()).includes(path)) return fail("Document not found");
+      if (Boolean(origin_session) !== Boolean(origin_turn)) return fail("Provide both the exact original session and delivery turn, or neither");
+      if (origin_provider && !origin_session) return fail("A provider requires exact original session and delivery IDs");
+      const url = new URL(options.serverUrl); url.pathname = "/"; url.search = ""; url.hash = "";
+      url.searchParams.set("doc", path);
+      if (origin_session && origin_turn) { url.searchParams.set("origin-session", origin_session); url.searchParams.set("origin-turn", origin_turn); }
+      if (origin_provider && origin_provider !== "codex") url.searchParams.set("origin-provider", origin_provider);
+      return ok(JSON.stringify({ url: url.toString(), conversation: origin_session ? "Connect in the browser after the delivery turn completes" : "Standalone editor; no original session attached" }));
+    }),
+  );
+
+  server.registerTool(
     "list_comments",
     {
       title: "List comments",
@@ -303,14 +322,23 @@ export async function createQuireMcpServer(options: McpOptions): Promise<McpServ
       const session = await join(path);
       const threads = new CommentStore(session.doc).list();
       if (threads.length === 0) return ok("No comments.");
-      return ok(
-        threads
-          .map(
-            (t) =>
-              `[${t.resolved ? "resolved" : "open"}${t.orphaned ? ", orphaned" : ""}] ${t.authorName} on ${JSON.stringify(t.quote)}: ${t.body}`,
-          )
-          .join("\n"),
-      );
+      return ok(JSON.stringify(threads, null, 2));
+    }),
+  );
+
+  server.registerTool(
+    "reply_comment",
+    {
+      title: "Reply to a comment",
+      description: "Continue an existing comment thread by ID, keeping the reply attached to the human's quoted passage.",
+      inputSchema: { path: z.string(), thread_id: z.string(), body: z.string().min(1).max(64000) },
+    },
+    guard(async ({ path, thread_id, body }: { path: string; thread_id: string; body: string }) => {
+      const session = await join(path); const comments = new CommentStore(session.doc);
+      if (!comments.list().some(thread => thread.id === thread_id)) return fail("Comment thread not found");
+      comments.reply(thread_id, body, author.id, author.name);
+      await session.settle(); const refused = refusals(session);
+      return refused ? fail(refused) : ok(`Reply added to ${thread_id}.`);
     }),
   );
 
@@ -347,20 +375,20 @@ export async function createQuireMcpServer(options: McpOptions): Promise<McpServ
     {
       title: "Create a document",
       description:
-        "Create a new Markdown document in the vault. Use this deliberately: every other " +
+        "Create a new Markdown, HTML or LaTeX document in the vault. Use this deliberately: every other " +
         "tool refuses an unknown path rather than creating one by accident.",
       inputSchema: {
-        path: z.string().describe("Vault-relative path ending in .md"),
+        path: z.string().describe("Vault-relative path ending in .md, .markdown, .html, .htm or .tex"),
         content: z.string().optional(),
       },
     },
     guard(async ({ path, content }: { path: string; content?: string | undefined }) => {
-      if (!/\.(md|markdown)$/i.test(path)) return fail("Document paths must end in .md");
+      if (!/\.(md|markdown|tex|html?)$/i.test(path)) return fail("Document paths must end in .md, .markdown, .html, .htm or .tex");
       const files = await listFiles();
       if (files.includes(path)) return fail(`${path} already exists`);
 
       const session = await join(path, false);
-      insertAttributed(session.text, 0, content ?? `# ${path.replace(/\.md$/i, "")}\n\n`, author);
+      insertAttributed(session.text, 0, content ?? (/\.tex$/i.test(path) ? "\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n" : /\.html?$/i.test(path) ? "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Document</title></head><body>\n<h1>Document</h1>\n</body></html>\n" : `# ${path.replace(/\.(md|markdown)$/i, "")}\n\n`), author);
       await session.settle();
       const refused = refusals(session);
       if (refused) return fail(refused);
@@ -640,6 +668,7 @@ export async function createQuireMcpServer(options: McpOptions): Promise<McpServ
     }),
   );
 
+  server.server.onclose = () => { for (const session of sessions.values()) session.close(); sessions.clear(); };
   return server;
 }
 

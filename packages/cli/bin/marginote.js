@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MarginoteServer } from "@marginote/server";
+import { spawn } from "node:child_process";
 import { defaultVault } from "./default-vault.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -29,13 +30,18 @@ if (args.includes("--help") || args.includes("-h")) {
   console.log(`
   marginote                   Open ~/Documents/Marginote; create it with a welcome
                               document only when the folder does not exist.
-  marginote <directory>       Use an existing Markdown folder or LaTeX project instead.
+  marginote <directory>       Use an existing Markdown/HTML folder or LaTeX project.
   marginote --demo             Try Marginote in a disposable sample vault.
 
     -v, --version         Print the installed Marginote version
     --demo                Create sample Markdown in a temporary folder, then remove it
                           when Marginote stops. No existing files are read or changed.
     --port <n>            Port to listen on (default 4321)
+    --doc <path>          Open this vault-relative artifact
+    --origin-provider <id> codex (default), claude-code, or hermes
+    --origin-session <id> Attach the original native session to the review link
+    --origin-turn <id>    Exact delivery turn; pair with --origin-session and --doc
+    --open                Open the review link in the default browser
     --host <addr>         Bind address (default 127.0.0.1, local only)
     --allow-host <name>   Additionally trust this hostname (repeatable). Needed only
                           when deliberately exposing the vault, e.g. via a tunnel.
@@ -65,7 +71,23 @@ const flag = (name, fallback) => {
   return i === -1 ? fallback : args[i + 1];
 };
 
-const valueFlags = new Set(["--port", "--host", "--allow-host"]);
+const valueFlags = new Set(["--port", "--host", "--allow-host", "--doc", "--origin-provider", "--origin-session", "--origin-turn"]);
+const documentPath = flag("--doc", null);
+const originSession = flag("--origin-session", null);
+const originTurn = flag("--origin-turn", null);
+const originProvider = flag("--origin-provider", "codex");
+for (const name of ["--doc", "--origin-provider", "--origin-session", "--origin-turn"]) {
+  if (args.includes(name) && (!flag(name, null) || flag(name, "").startsWith("--"))) {
+    console.error(`Missing value for ${name}`); process.exit(1);
+  }
+}
+if (!["codex", "claude-code", "hermes"].includes(originProvider) || (args.includes("--origin-provider") && !originSession)) {
+  console.error("Use --origin-provider codex|claude-code|hermes with the exact origin session and delivery IDs."); process.exit(1);
+}
+if (Boolean(originSession) !== Boolean(originTurn) || ((originSession || originTurn) && !documentPath) ||
+  [originSession, originTurn].some(id => id !== null && (typeof id !== "string" || !/^[\w-]{1,160}$/.test(id)))) {
+  console.error("Provide --doc and both exact --origin-session and --origin-turn IDs."); process.exit(1);
+}
 const positional = args.filter((arg, index) => !arg.startsWith("-") && !valueFlags.has(args[index - 1]));
 const demo = args.includes("--demo");
 let demoRoot = null;
@@ -147,10 +169,23 @@ try {
 }
 
 const count = server.vault.list().length;
+if (documentPath && !server.vault.list().includes(documentPath)) {
+  console.error(`Document not found in vault: ${documentPath}`); await server.close(); process.exit(1);
+}
+const reviewUrl = new URL(`http://127.0.0.1:${server.port}/`);
+if (documentPath) reviewUrl.searchParams.set("doc", documentPath);
+if (originSession && originTurn) { reviewUrl.searchParams.set("origin-session", originSession); reviewUrl.searchParams.set("origin-turn", originTurn); }
+if (originSession && originProvider !== "codex") reviewUrl.searchParams.set("origin-provider", originProvider);
 console.log(`\n  Marginote\n`);
 console.log(`  vault   ${root}`);
 console.log(`  docs    ${count} document${count === 1 ? "" : "s"}`);
-console.log(`  local   http://127.0.0.1:${server.port}\n`);
+console.log(`  local   ${reviewUrl}\n`);
+if (args.includes("--open")) {
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer.exe" : "xdg-open";
+  const browser = spawn(command, [reviewUrl.toString()], { stdio: "ignore" });
+  browser.on("error", () => console.error(`Open this link in your browser: ${reviewUrl}`));
+  browser.unref();
+}
 if (demoRoot) console.log(`  demo    disposable -- removed when Marginote stops`);
 const snapshots = server.git && (await server.git.isRepo());
 console.log(`  git     ${snapshots ? "snapshots on (commits when idle)" : "not a repository -- snapshots off"}`);
