@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +24,63 @@ const add = (body = "Explain this") => store.add({ text: room.handle.text, from:
 const idle = () => vi.waitFor(() => expect(manager.busy("report.md")).toBe(false));
 
 describe("artifact conversations", () => {
+  it("answers comments and follow-ups submitted during the fork without replaying old comments", async () => {
+    const old = add("Leave this existing comment alone");
+    const followed = add("An existing thread with a new follow-up");
+    let complete!: (session: string) => void;
+    vi.mocked(provider.fork).mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    const connecting = manager.bind(room, origin);
+    const added = add("Posted while connecting");
+    store.reply(followed, "Follow-up while connecting", "human", "Human");
+    complete("native-child"); await connecting; await idle();
+    expect(provider.prompt).toHaveBeenCalledTimes(2);
+    expect(store.list().find(thread => thread.id === old)!.replies).toHaveLength(0);
+    for (const id of [followed, added]) expect(store.list().find(thread => thread.id === id)!.replies.at(-1)!.body).toBe("Native answer");
+  });
+  it("refuses a fork whose document was renamed and keeps ownership until the fork settles", async () => {
+    let complete!: (session: string) => void;
+    let signal!: AbortSignal;
+    vi.mocked(provider.fork).mockImplementation((_origin, input) => { signal = input; return new Promise(resolve => { complete = resolve; }); });
+    const connecting = manager.bind(room, origin);
+    const checked = expect(connecting).rejects.toThrow(/renamed|identity/);
+    await rename(join(root, "report.md"), join(root, "renamed.md"));
+    await vi.waitFor(() => expect(room.handle.path).toBe("renamed.md"));
+    expect(signal.aborted).toBe(true);
+    expect(manager.owns("renamed.md")).toBe(true);
+    expect(manager.busy("renamed.md")).toBe(true);
+    complete("native-child"); await checked;
+    expect(manager.paths()).toEqual([]);
+    expect(manager.owns("report.md")).toBe(false); expect(manager.owns("renamed.md")).toBe(false);
+    await expect(readFile(join(root, ".marginote/conversations.json"))).rejects.toThrow(/ENOENT/);
+    vi.mocked(provider.fork).mockResolvedValue("replacement-child");
+    await manager.bind(room, origin);
+    expect(manager.status("renamed.md")?.sessionId).toBe("replacement-child");
+    const saved = JSON.parse(await readFile(join(root, ".marginote/conversations.json"), "utf8"));
+    expect(saved.bindings.map((binding: { doc: string }) => binding.doc)).toEqual(["renamed.md"]);
+  });
+  it("refuses a fork whose document was deleted", async () => {
+    let complete!: (session: string) => void;
+    vi.mocked(provider.fork).mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    const connecting = manager.bind(room, origin);
+    const checked = expect(connecting).rejects.toThrow(/deleted|identity/);
+    await rm(join(root, "report.md"));
+    await vi.waitFor(() => expect(room.handle.deleted).toBe(true), { timeout: 3000 });
+    complete("native-child"); await checked;
+    expect(manager.paths()).toEqual([]);
+  });
+  it("waits for an in-flight fork to stop before closing", async () => {
+    let complete!: (session: string) => void;
+    let signal!: AbortSignal;
+    vi.mocked(provider.fork).mockImplementation((_origin, input) => { signal = input; return new Promise(resolve => { complete = resolve; }); });
+    const connecting = manager.bind(room, origin);
+    const checked = expect(connecting).rejects.toThrow();
+    let closed = false;
+    const closing = manager.close().then(() => { closed = true; });
+    await Promise.resolve();
+    expect(signal.aborted).toBe(true); expect(closed).toBe(false);
+    complete("native-child"); await checked; await closing;
+    expect(manager.paths()).toEqual([]);
+  });
   it("forks at an explicit delivery point and reuses the child across comments and restart", async () => {
     const old = add("Existing comment");
     await manager.bind(room, origin);

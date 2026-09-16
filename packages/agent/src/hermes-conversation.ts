@@ -11,7 +11,7 @@ export class HermesConversationProvider implements ConversationProvider {
       const initialized = await rpc.request("initialize", {});
       if (initialized?.protocolVersion !== 1 || !initialized.capabilities?.includes(capability)) throw new Error(`The installed Marginote Hermes plugin does not support ${capability}`);
       return rpc;
-    } catch (error) { rpc.close(); throw error; }
+    } catch (error) { await rpc.close(); throw error; }
   }
 
   async fork(origin: ConversationOrigin, signal: AbortSignal): Promise<string> {
@@ -22,7 +22,7 @@ export class HermesConversationProvider implements ConversationProvider {
       if (result?.originSessionId !== origin.sessionId || result.deliveryRowId !== Number(origin.turnId) ||
         typeof result.sessionId !== "string" || result.sessionId === origin.sessionId || !/^[\w-]{1,160}$/.test(result.sessionId)) throw new Error("Hermes did not return the expected independent delivery snapshot");
       return result.sessionId;
-    } finally { rpc.close(); }
+    } finally { await rpc.close(); }
   }
 
   async prompt(sessionId: string, text: string, run: ConversationRun): Promise<string> {
@@ -50,6 +50,6 @@ export class HermesConversationProvider implements ConversationProvider {
       const result = await rpc.request("prompt", { sessionId, originSessionId: run.origin.sessionId, text, tools: run.tools.definitions }, 660_000);
       if (result?.sessionId !== sessionId || !modelReported || typeof result.text !== "string" || !result.text.trim()) throw new Error("Hermes did not complete the expected native child turn");
       return result.text;
-    } finally { run.tools.close(); rpc.close(); }
+    } finally { run.tools.close(); await rpc.close(); }
   }
 }

@@ -1,4 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { promisify } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
+const execute = promisify(execFile);
 type Message = { id?: string | number; method?: string; params?: any; result?: any; error?: { code?: number; message: string } };
 type Pending = { resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
 
@@ -10,30 +13,35 @@ export class NativeRpc {
   private sequence = 0;
   private buffer = "";
   private ended: Error | null = null;
+  private closing: Promise<void> | null = null;
+  private readonly exited: Promise<void>;
   requestHandler: (message: Message) => Promise<unknown> = async () => { throw new Error("Unsupported agent request"); };
   constructor(command: string, args: string[], cwd: string, private readonly signal: AbortSignal, private readonly label = "Codex") {
     signal.throwIfAborted();
     this.child = spawn(command, args, { cwd, stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
+    this.exited = new Promise(resolve => this.child.once("close", () => resolve()));
     this.child.stdout.setEncoding("utf8");
     this.child.stdout.on("data", (chunk: string) => {
       this.buffer += chunk;
-      if (Buffer.byteLength(this.buffer) > 32 * 1024 * 1024) return this.close(new Error(`${this.label} response exceeded 32 MiB`));
+      if (Buffer.byteLength(this.buffer) > 32 * 1024 * 1024) return this.stop(new Error(`${this.label} response exceeded 32 MiB`));
       let end: number;
       while ((end = this.buffer.indexOf("\n")) !== -1) {
         const line = this.buffer.slice(0, end); this.buffer = this.buffer.slice(end + 1);
         if (!line.trim()) continue;
         try { this.receive(JSON.parse(line)); }
-        catch { this.close(new Error(`Invalid JSON from ${this.label} native runtime`)); return; }
+        catch { this.stop(new Error(`Invalid JSON from ${this.label} native runtime`)); return; }
       }
     });
     // Drain stderr without leaking native session contents into HTTP errors.
     this.child.stderr.resume();
-    this.child.stdin.on("error", () => this.close(new Error(`${this.label} input closed`)));
-    this.child.on("error", error => this.close(new Error(`Unable to start ${this.label}: ${error.message}`)));
-    this.child.on("exit", code => this.close(new Error(`${this.label} native runtime exited (${code ?? "signal"})`)));
+    this.child.stdin.on("error", () => this.stop(new Error(`${this.label} input closed`)));
+    this.child.on("error", error => this.stop(new Error(`Unable to start ${this.label}: ${error.message}`)));
+    this.child.on("exit", code => this.stop(new Error(`${this.label} native runtime exited (${code ?? "signal"})`)));
     signal.addEventListener("abort", this.abort, { once: true });
   }
-  private readonly abort = (): void => this.close(new Error(`${this.label} conversation cancelled`));
+  private readonly abort = (): void => this.stop(new Error(`${this.label} conversation cancelled`));
+  // Event handlers initiate shutdown; providers await the same promise in finally.
+  private stop(error: Error): void { void this.close(error).catch(() => {}); }
   private send(message: Message): void {
     if (this.ended) throw this.ended;
     this.child.stdin.write(`${JSON.stringify(message)}\n`);
@@ -65,23 +73,76 @@ export class NativeRpc {
     await this.request("initialize", { clientInfo: { name: "marginote", version: "0.2.0" }, capabilities: null });
     this.send({ method: "initialized" });
   }
-  close(error = new Error(`${this.label} connection closed`)): void {
-    if (this.ended) return;
+  close(error = new Error(`${this.label} connection closed`)): Promise<void> {
+    if (this.closing) return this.closing;
+    this.closing = Promise.resolve().then(() => this.terminate());
     this.ended = error;
     this.signal.removeEventListener("abort", this.abort);
     for (const item of this.pending.values()) { clearTimeout(item.timer); item.reject(error); }
     this.pending.clear();
     for (const listener of this.listeners) listener({ method: "marginote/disconnected", params: { error } });
     this.listeners.clear();
-    this.child.stdin.destroy();
+    return this.closing;
+  }
+  private async terminate(): Promise<void> {
     const pid = this.child.pid;
-    if (pid) {
-      try { if (process.platform === "win32") this.child.kill(); else process.kill(-pid, "SIGTERM"); } catch { /* already exited */ }
-      const timer = setTimeout(() => {
-        try { if (process.platform === "win32") this.child.kill("SIGKILL"); else process.kill(-pid, "SIGKILL"); } catch { /* already exited */ }
-      }, 1500);
-      timer.unref();
-      this.child.once("close", () => clearTimeout(timer));
+    if (!pid) { this.child.stdin.destroy(); await this.exited; return; }
+    if (process.platform === "win32") {
+      // Kill the tree before killing its root, while taskkill can still find it.
+      try { await execute("taskkill", ["/PID", String(pid), "/T", "/F"], { timeout: 10_000 }); }
+      catch (error) { if (this.child.exitCode === null && this.child.signalCode === null) throw error; }
+      this.child.stdin.destroy();
+      await this.exited; return;
     }
+    const exists = (target: number) => {
+      try { process.kill(target, 0); return true; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+        if ((error as NodeJS.ErrnoException).code === "EPERM") return true;
+        throw error;
+      }
+    };
+    const descendants = new Set<number>([pid]);
+    const running = async () => {
+      const { stdout } = await execute("ps", ["-eo", "pid=,ppid=,pgid=,stat="], { timeout: 5000 });
+      const processes = stdout.trim().split("\n").map(line => {
+        const [id, parent, group, state] = line.trim().split(/\s+/);
+        return { id: Number(id), parent: Number(parent), group: Number(group), state };
+      });
+      // Capture descendants before their parent exits and they are reparented.
+      // Native tools may create their own process groups.
+      let size: number;
+      do {
+        size = descendants.size;
+        for (const child of processes) {
+          if (child.group === pid || descendants.has(child.parent)) descendants.add(child.id);
+        }
+      } while (descendants.size !== size);
+      return processes.filter(child => descendants.has(child.id) && child.state && !child.state.startsWith("Z"));
+    };
+    const terminateTree = async (signal: NodeJS.Signals) => {
+      const processes = await running();
+      try { process.kill(-pid, signal); }
+      catch (error) {
+        // macOS can report EPERM for a group containing only orphan zombies.
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ESRCH" && !(code === "EPERM" && !(await running()).some(child => child.group === pid))) throw error;
+      }
+      for (const child of processes) {
+        if (child.group === pid) continue;
+        try { process.kill(child.id, signal); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+      }
+    };
+    await terminateTree("SIGTERM");
+    this.child.stdin.destroy();
+    const deadline = Date.now() + 1500;
+    const treeExists = () => exists(-pid) || [...descendants].some(id => exists(id));
+    // A leader's exit does not mean its descendants have finished.
+    while (treeExists() && Date.now() < deadline) await delay(25);
+    if (treeExists()) await terminateTree("SIGKILL");
+    await this.exited;
+    // Orphan zombies may await init's reaper, but cannot execute further work.
+    while (treeExists() && (await running()).length) await delay(25);
   }
 }

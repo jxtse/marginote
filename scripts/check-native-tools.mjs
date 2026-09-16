@@ -53,6 +53,6 @@ try {
       if (!error.message.includes("no rollout found")) console.error(`Unable to archive synthetic session ${sessionId}: ${error.message}`);
     });
   }
-  for (const rpc of rpcs) rpc.close();
+  for (const rpc of rpcs) await rpc.close();
   await endpoint?.close(); await vault?.close(); await rm(root, { recursive: true, force: true });
 }

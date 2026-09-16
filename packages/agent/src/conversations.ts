@@ -38,7 +38,7 @@ const nativeAuthors = {
 export class ArtifactConversations {
   private readonly bindings = new Map<string, Binding>();
   private readonly rooms = new Map<string, Live>();
-  private readonly binding = new Set<string>();
+  private readonly binding = new Map<string, { room: AgentRoom; controller: AbortController; finished: Promise<void> }>();
   private writes: Promise<unknown> = Promise.resolve();
   private closed = false;
   private readonly closing = new AbortController();
@@ -47,7 +47,11 @@ export class ArtifactConversations {
     vault.on("doc:delete", this.deleted);
   }
   private readonly renamed = ({ from, to }: { from: string; to: string }): void => {
-    const entry = this.bindings.get(from); if (!entry) return;
+    const entry = this.bindings.get(from);
+    if (!entry) {
+      this.binding.get(from)?.controller.abort(new Error("The document was renamed while connecting. Reconnect at its new path."));
+      return;
+    }
     const live = this.rooms.get(from);
     if (this.bindings.has(to)) {
       entry.error = "The document was renamed onto another bound document. Disconnect and reconnect explicitly.";
@@ -59,15 +63,19 @@ export class ArtifactConversations {
     void this.save().catch(error => { entry.error = String(error); }).finally(() => { this.changed(from); this.changed(to); });
   };
   private readonly deleted = ({ path }: { path: string }): void => {
+    this.binding.get(path)?.controller.abort(new Error("The document was deleted while connecting. Reconnect explicitly."));
     const entry = this.bindings.get(path); if (!entry) return;
     entry.error = "The document was deleted. Reconnect explicitly before discussing a replacement file.";
     this.rooms.get(path)?.controller?.abort();
     void this.save().catch(error => { entry.error = String(error); }).finally(() => this.changed(path));
   };
 
-  owns(doc: string): boolean { return this.bindings.has(doc) || this.binding.has(doc); }
+  private connecting(doc: string): boolean {
+    return this.binding.has(doc) || [...this.binding.values()].some(pending => pending.room.handle.path === doc);
+  }
+  owns(doc: string): boolean { return this.bindings.has(doc) || this.connecting(doc); }
   paths(): string[] { return [...this.bindings.keys()]; }
-  busy(doc: string): boolean { return this.binding.has(doc) || Boolean(this.rooms.get(doc)?.task); }
+  busy(doc: string): boolean { return this.connecting(doc) || Boolean(this.rooms.get(doc)?.task); }
   status(doc: string) {
     const entry = this.bindings.get(doc); const live = this.rooms.get(doc);
     if (!entry) return null;
@@ -124,20 +132,27 @@ export class ArtifactConversations {
     if (this.closed) throw new Error("Server is closing");
     if (!this.vault.list().includes(doc)) throw new Error("Document not found");
     if (this.owns(doc)) throw new Error("This document already has a conversation");
-    this.binding.add(doc);
+    // Only comments present at the start of the handoff are a baseline.
+    const store = new CommentStore(room.handle.doc);
+    const receipts = store.list().map(thread => ({ threadId: thread.id, revision: this.revision(room, thread), answer: null }));
+    const controller = new AbortController();
+    let finish!: () => void;
+    const finished = new Promise<void>(resolve => { finish = resolve; });
+    this.binding.set(doc, { room, controller, finished });
     try {
-      const signal = AbortSignal.any([this.closing.signal, AbortSignal.timeout(60_000)]);
+      const signal = AbortSignal.any([this.closing.signal, controller.signal, AbortSignal.timeout(60_000)]);
       const sessionId = await this.provider.fork(origin, signal);
       signal.throwIfAborted();
+      if (room.handle.path !== doc || room.handle.deleted || !this.vault.list().includes(doc) || this.vault.getDoc(doc) !== room.handle) {
+        throw new Error("The document changed identity while connecting. Reconnect explicitly.");
+      }
       if (sessionId === origin.sessionId || !/^[\w-]{1,160}$/.test(sessionId)) throw new Error("Provider did not fork the original session");
-      // Existing review comments are a baseline, never replayed as new requests.
-      const store = new CommentStore(room.handle.doc);
-      const receipts = store.list().map(thread => ({ threadId: thread.id, revision: this.revision(room, thread), answer: null }));
-      this.bindings.set(doc, { doc, origin, sessionId, createdAt: new Date().toISOString(), receipts, active: null, error: null });
-      try { await this.save(); } catch (error) { this.bindings.delete(doc); throw error; }
-      this.attach(room); this.changed(doc);
-      return this.status(doc);
-    } finally { this.binding.delete(doc); }
+      const entry: Binding = { doc, origin, sessionId, createdAt: new Date().toISOString(), receipts, active: null, error: null };
+      this.bindings.set(doc, entry);
+      try { await this.save(); } catch (error) { this.bindings.delete(entry.doc); throw error; }
+      this.attach(room); this.changed(entry.doc);
+      return this.status(entry.doc);
+    } finally { this.binding.delete(doc); finish(); }
   }
   attach(room: AgentRoom): void {
     const path = room.handle.path;
@@ -251,6 +266,7 @@ export class ArtifactConversations {
     this.closed = true; this.closing.abort();
     this.vault.removeListener("doc:rename", this.renamed); this.vault.removeListener("doc:delete", this.deleted);
     for (const live of this.rooms.values()) { live.store.yarray.unobserveDeep(live.observe); live.controller?.abort(); }
+    await Promise.all([...this.binding.values()].map(pending => pending.finished));
     await Promise.all([...this.rooms.values()].map(live => live.task));
     await this.writes; this.rooms.clear();
   }

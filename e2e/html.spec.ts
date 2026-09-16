@@ -40,8 +40,20 @@ test("HTML preserves styles and scripts, maps a rendered selection, and continue
     expect(await frame.locator("body").evaluate(() => (window as any).parentBlocked)).toBe(true);
     await expect.poll(() => frame.locator("body").evaluate(() => (window as any).apiBlocked)).toBe(true);
     expect(await page.locator("body").getAttribute("data-escaped")).toBeNull();
+    const blockedNavigation = page.evaluate(() => new Promise<void>(resolve => {
+      const blocked = (event: SecurityPolicyViolationEvent) => {
+        if (event.effectiveDirective !== "frame-src" || !event.blockedURI.startsWith("https://blocked.invalid")) return;
+        document.removeEventListener("securitypolicyviolation", blocked); resolve();
+      };
+      document.addEventListener("securitypolicyviolation", blocked);
+    }));
     await frame.locator("#escape").click();
-    await expect(page.locator(".html-status")).toContainText("blocked navigation"); expect(externalRequests).toBe(0);
+    await blockedNavigation;
+    // Engines may either retain srcdoc or replace it with a blocked frame.
+    await expect.poll(async () =>
+      (await page.locator(".html-status").textContent())?.includes("blocked navigation") || await frame.locator("h1").isVisible(),
+    ).toBe(true);
+    expect(externalRequests).toBe(0);
     await page.getByRole("button", { name: "Reload preview" }).click();
     await expect(frame.locator("h1")).toBeVisible();
     await writeFile(join(root, "paper/css/theme.css"), 'p{color:rgb(80,20,100)} .figure{width:80px;height:40px;background-image:url("../images/figure.svg")}');
@@ -92,5 +104,6 @@ test("HTML preserves styles and scripts, maps a rendered selection, and continue
     await page.goto(`http://127.0.0.1:${server.port}/?doc=note.md`);
     await expect(page.locator("#preview h1")).toHaveText("Markdown remains available");
     await expect(page.locator('iframe[title="HTML document preview"]')).toHaveCount(0);
+    expect(externalRequests).toBe(0);
   } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
 });

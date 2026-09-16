@@ -21,7 +21,7 @@ export class CodexConversationProvider implements ConversationProvider {
       const child = result?.thread;
       if (typeof child?.id !== "string" || child.id === origin.sessionId || child.forkedFromId !== origin.sessionId) throw new Error("Codex did not confirm a distinct fork of the original session");
       return child.id;
-    } finally { rpc.close(); }
+    } finally { await rpc.close(); }
   }
   async prompt(sessionId: string, text: string, run: ConversationRun): Promise<string> {
     const rpc = new CodexRpc(this.executable, this.args, this.cwd, run.signal);
@@ -82,6 +82,6 @@ export class CodexConversationProvider implements ConversationProvider {
       const [, answer] = await Promise.all([started, done]);
       if (!answer) throw new Error("Codex completed without an answer");
       return answer;
-    } finally { dispose?.(); rpc.close(); await mcp?.close(); }
+    } finally { dispose?.(); await Promise.all([rpc.close(), mcp?.close()]); }
   }
 }
