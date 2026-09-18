@@ -13,7 +13,7 @@ npm run build
 node packages/cli/bin/marginote.js /tmp/marginote-demo-vault --port 4430 --history
 
 # 2. Install recorder-only dependencies without changing the root package
-cd tools/recorder
+cd scripts/recorder
 npm install --no-save --package-lock=false --ignore-scripts puppeteer-core gifenc pngjs
 
 # 3. Record and encode

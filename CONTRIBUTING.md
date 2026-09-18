@@ -5,8 +5,8 @@ and well-scoped feature proposals are welcome.
 
 Marginote is pre-1.0 and moving fast. Before opening a large pull request, please start a
 [discussion](https://github.com/jxtse/marginote/discussions) or open a feature request. Marginote is
-focused on collaborative plain Markdown rather than becoming a general-purpose canvas or plugin
-platform, so explain how a large proposal strengthens that focus.
+focused on local document editing and review across Markdown, HTML and LaTeX, with optional
+agent conversations. Explain how a large proposal strengthens that focus.
 
 ## Before you start
 
@@ -25,6 +25,9 @@ npm start -- /path/to/a/test-vault
 
 The server prints its local URL, normally `http://127.0.0.1:4321`. Use a disposable folder for
 manual testing.
+
+See the [repository layout](docs/architecture.md) for package and test responsibilities,
+and the [release guide](docs/releasing.md) for packaging and publication.
 
 ## Verification
 

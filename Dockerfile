@@ -6,7 +6,6 @@ FROM node:24-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json tsconfig.base.json tsconfig.json vitest.config.ts ./
 COPY packages ./packages
-COPY registry ./registry
 COPY scripts ./scripts
 COPY docs ./docs
 COPY plugins ./plugins

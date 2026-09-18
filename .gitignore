@@ -10,7 +10,9 @@ coverage/
 !.env.example
 .marginote/
 .agents/
-tools/recorder/frames/
+scripts/recorder/frames/
+.smoke/
+*.log
 playwright-report/
 test-results/
 

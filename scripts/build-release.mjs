@@ -76,7 +76,7 @@ await cp(join(root, "plugins"), join(out, "plugins"), {
   filter: path => !path.split(/[\\/]/).includes("__pycache__") && !path.endsWith(".pyc"),
 });
 await mkdir(join(out, "registry"), { recursive: true });
-await cp(join(root, "registry/index.json"), join(out, "registry/index.json"));
+await cp(join(root, "packages/server/data/registry.json"), join(out, "registry/index.json"));
 for (const file of ["README.md", "README.zh-CN.md", "CHANGELOG.md", "LICENSE", "SECURITY.md"]) {
   await cp(join(root, file), join(out, file));
 }

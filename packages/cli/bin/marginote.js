@@ -141,7 +141,7 @@ const root = demoRoot ?? (positional[0] ? resolve(positional[0]) : await default
 // stages a copy beside the binary -- and in a clone the live build is the one that
 // changes, so preferring the staged copy would serve a stale client after every release.
 const webRoot = locate("../../web/dist", "../web");
-const registryPath = locate("../../../registry/index.json", "../registry/index.json");
+const registryPath = locate("../../server/data/registry.json", "../registry/index.json");
 
 if (!webRoot) {
   console.error("Web client not found. From a clone, run: npm run build");
