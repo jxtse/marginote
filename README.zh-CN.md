@@ -130,19 +130,28 @@ Settings 里单独填的模型。
 这些标识要从原 Agent 的运行环境取得，不能用会话标题或“最近一次聊天”代替。拿不到时，先用
 普通编辑模式；这不代表已连接原会话。Hermes 还需在原配置中启用[对应插件](plugins/marginote-hermes/README.md)。
 
+装好 Hermes 插件后，让 Agent 在后台终端运行 `hermes marginote report.md` 即可。它会识别当前
+会话，等本轮交付结束后自动连接。如果 Marginote 不在 PATH 中，只需设置一次已有 CLI 的位置：
+`hermes marginote --setup /path/to/marginote/packages/cli/bin/marginote.js`。
+不需要另外配置 MCP，也不要为了取得 ID 新开一个聊天，否则只能继承新聊天的内容。
+
 在构建过的仓库目录执行下面的命令，将路径、文件名和两个 ID 占位符都换成真实值：
 
 ```bash
 node packages/cli/bin/marginote.js "/你的项目路径" --doc report.md --port 0 --open --origin-provider codex --origin-session EXACT_SESSION_ID --origin-turn EXACT_COMPLETED_TURN_ID
 ```
 
-1. 打开命令打印的完整链接，等原 Agent 的交付回复结束。
-2. 点 **Connect conversation**，看到 **Codex conversation · Ready**（或相应 Agent 名称）。
+1. 打开命令打印的完整链接。带原会话参数的 CLI 会自动连接；加 `--no-connect` 才保留手动按钮。
+2. 确认显示 **Codex conversation · Ready**（或相应 Agent 名称）。Hermes 会显示继承的模型，
+   在会话详情中显示复制的消息数量。
 3. 新建批注。讨论会在继承上下文的独立子会话中进行，不会把问题发回原聊天。
 4. 有建议时选择 **Accept / Reject**；出现 **Your approval needed** 时，查看具体操作，
    再选择 **Approve once**（仅批准这次）或 **Decline**（拒绝）。
 
-连接前的旧批注不会自动执行，连接后的新批注和追问才会触发 Agent。这个模式下 **Grill me**
+每条新请求开始处理时会显示 **👀 received · reading…** 回执。讨论结束用 **Resolve**，
+需要继续时用 **Reopen**；批注和历史回复都会保留。
+
+开始连接前的旧批注不会自动执行；等待连接期间和连接后的新批注、追问会在连接完成后处理。这个模式下 **Grill me**
 会隐藏。仅打开链接或点连接不会开始模型推理。
 
 同一个文件夹只能由一个 Marginote 服务打开。若已有服务，请复用它的链接，或由已连接 MCP
@@ -161,7 +170,7 @@ node packages/cli/bin/marginote.js "/你的项目路径" --doc report.md --port 
 | 左侧没有文档 | 确认打开的是包含文件的文件夹；npm 包先用 `.md`，HTML/LaTeX 用源码版。 |
 | **Comment** 点不了 | 先在源码编辑区选中文字。 |
 | 批注没人回复 | 内置 AI 先测试 Settings，再发新批注；原生会话检查是否 Ready、等待批准或报错。 |
-| 没有 **Connect conversation** | 确认是源码版，而且打开了带文档和原始会话 ID 的完整链接。普通编辑链接没有这个按钮。 |
+| 没有 **Connect conversation** | CLI 现在自动连接，先看是否显示 **Ready / Connecting**。手动链接要带文档和原会话 ID；普通编辑链接不会绑定聊天。 |
 | `Web client not found` | 在克隆的仓库目录运行 `npm ci` 和 `npm run build`。 |
 | 提示文件夹已被占用 | 复用已有服务，或在原终端按 `Ctrl+C` 停止；崩溃后等待最多两分钟。 |
 | HTML 样式或 LaTeX 预览不完整 | 查看 [HTML 支持范围](docs/html-artifacts.md)或 [LaTeX 环境要求](docs/latex-and-images.md)。 |

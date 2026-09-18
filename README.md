@@ -144,19 +144,29 @@ Obtain these from the originating runtime. If they are unavailable, open the doc
 normally; its original conversation is not connected. Hermes additionally needs the
 [native plugin enabled in that same profile](plugins/marginote-hermes/README.md).
 
+With that Hermes plugin, the agent can simply run `hermes marginote report.md` in a
+background terminal. It infers the current session, waits for its delivery to finish,
+and connects automatically. If Marginote is not on PATH, configure the existing CLI once
+with `hermes marginote --setup /path/to/marginote/packages/cli/bin/marginote.js`.
+No separate MCP setup is needed. Never create a new chat just to obtain session IDs.
+
 From the built checkout, substitute your real folder, file and IDs:
 
 ```bash
 node packages/cli/bin/marginote.js "/path/to/project" --doc report.md --port 0 --open --origin-provider codex --origin-session EXACT_SESSION_ID --origin-turn EXACT_COMPLETED_TURN_ID
 ```
 
-1. Open the printed review link and wait for the original agent's delivery to finish.
-2. Click **Connect conversation**. Confirm the panel says **Codex conversation · Ready**
-   (or the provider you selected).
+1. Open the printed review link. CLI origin flags connect automatically; `--no-connect`
+   keeps a manual **Connect conversation** button.
+2. Confirm the panel says **Codex conversation · Ready** (or the selected provider).
+   Hermes shows the inherited model and history counts in its conversation details.
 3. Add a **new** comment. It continues a separate child conversation with the inherited
    history; it does not send your question back to the original chat.
 4. Review proposed edits with **Accept**/**Reject**. If the panel says **Your approval
    needed**, inspect the action and choose **Approve once** or **Decline**.
+
+Each request receives a **👀 received · reading…** acknowledgment. Use **Resolve** to
+close a discussion and **Reopen** to continue it; comments are retained.
 
 Only new comments and follow-ups trigger work after connection. **Grill me** is hidden
 for connected documents. Opening a review link or connecting alone does not start a model
@@ -178,7 +188,7 @@ and the [agent launcher skill](plugins/marginote/skills/artifact-review/SKILL.md
 | No documents are listed | Put a supported file inside the folder you launched. The npm release handles Markdown; use the source build for HTML/LaTeX. |
 | **Comment** is disabled | Select text in the source editor first. |
 | Comments receive no AI reply | For the built-in AI, test Settings, then post a new comment. For an attached agent, check its **Ready**, approval or error status. |
-| No **Connect conversation** button | Use the source build and the full review URL containing the document and exact origin IDs. Ordinary editor links do not offer this button. |
+| No **Connect conversation** button | CLI handoffs connect automatically; look for **Ready** or **Connecting**. Manual links need the document and exact origin IDs. Ordinary editor links do not attach a chat. |
 | `Web client not found` | Run `npm ci` and `npm run build` in the cloned repository. |
 | The folder is already owned by another runtime | Reuse its URL or stop that server with `Ctrl+C`. After a crash, allow up to two minutes for ownership to expire. |
 | HTML assets or a PDF preview are missing | See [HTML boundaries](docs/html-artifacts.md) or [LaTeX prerequisites](docs/latex-and-images.md). |

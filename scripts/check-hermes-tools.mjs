@@ -14,7 +14,12 @@ const origin = { provider: "hermes", sessionId: parent, turnId: delivery };
 const signal = AbortSignal.timeout(150_000);
 let vault;
 try {
-  const child = await provider.fork(origin, signal);
+  const snapshot = await provider.fork(origin, signal);
+  const child = snapshot.sessionId;
+  assert.equal(snapshot.model, "synthetic-model");
+  assert.equal(snapshot.provider, "custom:fixture");
+  assert.equal(snapshot.activeMessages, 2);
+  console.log("PASS: native delivery snapshot created.");
   vault = await Vault.open({ root });
   const handle = vault.getDoc("report.md");
   const comments = new CommentStore(handle.doc);
@@ -33,11 +38,13 @@ try {
   const revised = await readFile(join(root, "report.md"), "utf8");
   assert(revised.startsWith("This claim remembers "));
   assert(comments.list()[0].orphaned);
+  console.log("PASS: native artifact read/proposal completed; disk changed only after human acceptance.");
   const followup = await provider.prompt(child, "Follow-up: remember the code from our original conversation and confirm the revision.", {
     signal, origin, approve: async () => false, tools: artifactTools(vault, room, thread, author, budget, signal),
   });
   const nonce = revised.match(/remembers ([A-Z0-9-]+)\./)[1];
   assert(followup.includes(nonce));
+  console.log("PASS: another native process resumed the child with inherited history.");
   let approvals = 0;
   const denied = await provider.prompt(child, "Approval-check: request deletion of the disposable approval-fixture directory, respecting the human decision.", {
     signal, origin, approve: async request => { assert(request.detail.includes("approval-fixture")); approvals++; return false; },

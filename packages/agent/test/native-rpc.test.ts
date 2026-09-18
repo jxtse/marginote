@@ -67,6 +67,10 @@ createInterface({ input: process.stdin }).on('line', line => {
 
 it.skipIf(process.platform === "win32")("does not settle a cancelled provider turn until its native process stops", async () => {
   const script = join(root, "native.mjs");
+  await writeFile(join(root, "rollout.jsonl"), [
+    { type: "session_meta", payload: { id: "parent", model_provider: "fixture" } },
+    { type: "turn_context", payload: { turn_id: "delivery", model: "fixture-native" } },
+  ].map(row => JSON.stringify(row)).join("\n"));
   await writeFile(script, `
 import { createInterface } from 'node:readline';
 process.on('SIGTERM', () => { setTimeout(() => process.exit(0), 250); });
@@ -75,7 +79,8 @@ const send = message => process.stdout.write(JSON.stringify(message) + '\\n');
 createInterface({ input: process.stdin }).on('line', line => {
   const message = JSON.parse(line);
   if (message.method === 'initialize') send({ id: message.id, result: {} });
-  if (message.method === 'thread/resume') send({ id: message.id, result: { thread: { id: 'child', turns: [] } } });
+  if (message.method === 'thread/read') send({id:message.id,result:{thread:{id:'parent',path:${JSON.stringify(join(root, "rollout.jsonl"))},turns:[{id:'delivery',status:'completed'}]}}});
+  if (message.method === 'thread/resume') send({ id: message.id, result: { thread: { id: 'child', turns: [] }, model:'fixture-native',modelProvider:'fixture' } });
   if (message.method === 'turn/start') {
     send({ id: message.id, result: { turn: { id: 'turn' } } });
     send({ id: 'approval', method: 'item/commandExecution/requestApproval', params: { threadId: 'child', command: String(process.pid) } });
@@ -86,6 +91,7 @@ createInterface({ input: process.stdin }).on('line', line => {
   const started = new Promise<number>(resolve => { ready = resolve; });
   const controller = new AbortController();
   const work = new CodexConversationProvider(root, process.execPath, [script]).prompt("child", "Wait", {
+    origin: { provider: "codex", sessionId: "parent", turnId: "delivery" },
     signal: controller.signal, approve: async request => { ready(Number(request.detail)); return false; },
   });
   const checked = expect(work).rejects.toThrow(/cancelled/);

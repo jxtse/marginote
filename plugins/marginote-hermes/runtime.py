@@ -77,6 +77,34 @@ class NativeTurn:
             if record and record.get("running"):
                 self.server.dispatch({"id": "native-cancel", "method": "session.interrupt", "params": {"session_id": self.live}}, transport=self)
 
+    def _approval(self, payload):
+        request_id = payload.get("request_id")
+        if not isinstance(request_id, str) or not request_id:
+            raise RuntimeError("Hermes approval did not identify the exact request")
+        answer = self.call_client("marginote/approve", {"id": request_id, "detail": json.dumps(payload, ensure_ascii=False, indent=2)})
+        if self.cancelled.is_set():
+            raise RuntimeError("Hermes conversation cancelled")
+        return {"choice": "once" if answer is True else "deny", "all": False}
+
+    def _server_request(self, frame):
+        # Current Hermes asks the renderer via peer JSON-RPC, rather than a
+        # *.request event. Reply to the wire id, not the approval queue id.
+        request_id = frame.get("id")
+        try:
+            payload = frame.get("params") or {}
+            if not isinstance(request_id, str) or not request_id:
+                raise RuntimeError("Hermes interactive request has no valid id")
+            if payload.get("session_id") != self.live:
+                raise RuntimeError("Hermes interactive request belongs to a different session")
+            if frame["method"] != "approval":
+                raise RuntimeError(f"Continue in the native Hermes client: unsupported request {frame['method']}")
+            result = self._approval(payload)
+        except Exception as error:
+            self.server.dispatch({"jsonrpc": "2.0", "id": request_id,
+                                  "error": {"code": -32601, "message": str(error)}}, transport=self)
+            raise
+        self.server.dispatch({"jsonrpc": "2.0", "id": request_id, "result": result}, transport=self)
+
     def _tools(self, definitions, child_id):
         expected = {"marginote_read_document", "marginote_suggest_edit"}
         if not isinstance(definitions, list) or {tool.get("name") for tool in definitions if isinstance(tool, dict)} != expected or len(definitions) != 2:
@@ -162,6 +190,9 @@ class NativeTurn:
             deadline = time.monotonic() + 600
             while True:
                 frame = self._next(deadline)
+                if frame.get("method") and "id" in frame:
+                    self._server_request(frame)
+                    continue
                 if frame.get("method") != "event":
                     continue
                 event = frame.get("params") or {}
@@ -169,11 +200,8 @@ class NativeTurn:
                     continue
                 kind, payload = event.get("type"), event.get("payload") or {}
                 if kind == "approval.request":
-                    request_id = payload.get("request_id")
-                    if not isinstance(request_id, str) or not request_id:
-                        raise RuntimeError("Hermes approval did not identify the exact request")
-                    answer = self.call_client("marginote/approve", {"id": request_id, "detail": json.dumps(payload, ensure_ascii=False, indent=2)})
-                    result = self._request("approval.respond", {"session_id": self.live, "request_id": request_id, "choice": "once" if answer is True else "deny", "all": False})
+                    decision = self._approval(payload)
+                    result = self._request("approval.respond", {"session_id": self.live, "request_id": payload["request_id"], **decision})
                     if result.get("resolved") != 1:
                         raise RuntimeError("The native Hermes approval expired or was not resolved")
                 elif kind == "message.complete":
@@ -188,6 +216,7 @@ class NativeTurn:
                         raise RuntimeError("Hermes turn did not settle; inspect the child before retrying")
                     if record.get("session_key") != child_id or agent.session_id != child_id:
                         raise RuntimeError("Hermes changed the native session during this turn; inspect it before retrying")
+                    self.call_client("marginote/model", {"model": agent.model})
                     return {"sessionId": child_id, "text": payload["text"]}
                 elif kind == "error" or str(kind).endswith(".request"):
                     raise RuntimeError(f"Continue in the native Hermes client: unsupported event {kind}")

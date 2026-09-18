@@ -1,4 +1,5 @@
 import { heading, hint, openMenu } from "./menus.js";
+import type { ConversationStatus } from "./conversation.js";
 
 interface Settings {
   baseUrl: string; apiKey: string; model: string; agentName: string;
@@ -14,7 +15,7 @@ export async function agentRequest(path: string, body?: unknown): Promise<unknow
   return value;
 }
 
-export function wireAgentSettings(button: HTMLButtonElement): void {
+export function wireAgentSettings(button: HTMLButtonElement, currentDoc: () => string | null = () => null): void {
   button.onclick = () => openMenu(button, panel => {
     panel.classList.add("agent-settings");
     panel.append(heading("Settings → Agent"), hint("Your collaborator answers new comments and suggests edits for review. Keys stay on this server, never in documents."));
@@ -23,9 +24,22 @@ export function wireAgentSettings(button: HTMLButtonElement): void {
     status.setAttribute("role", "status");
     status.textContent = "Loading…";
     panel.append(status);
-    void agentRequest("config").then(async value => {
+    const doc = currentDoc();
+    void agentRequest(`status${doc ? `?doc=${encodeURIComponent(doc)}` : ""}`).then(async value => {
       if (!panel.isConnected) return;
-      const config = value as Settings;
+      const state = value as { configured: boolean; state: string; lastError: string | null; conversation?: ConversationStatus | null };
+      const conversation = state.conversation;
+      if (conversation) {
+        const name = conversation.origin.provider === "hermes" ? "Hermes" : conversation.origin.provider === "claude-code" ? "Claude Code" : "Codex";
+        panel.replaceChildren(heading(`Settings → ${name}`), hint(`This document continues your original ${name} conversation. Its model and permissions are managed in ${name}.`));
+        const model = conversation.currentModel ?? conversation.snapshot?.model;
+        if (model) panel.append(hint(`Model: ${model}`));
+        if (conversation.snapshot) panel.append(hint(`Delivery provider: ${conversation.snapshot.provider}${conversation.snapshot.reasoningEffort ? ` · reasoning ${conversation.snapshot.reasoningEffort}` : ""}`));
+        panel.append(hint(conversation.error ?? (conversation.state === "connecting" ? "Waiting for the original delivery to finish." : "See Conversation details beside your comments for the source session and inherited history.")));
+        return;
+      }
+      const config = await agentRequest("config") as Settings;
+      if (!panel.isConnected) return;
       const form = document.createElement("form");
       const fields = new Map<string, HTMLInputElement>();
       for (const [name, labelText, value, secret] of [
@@ -75,7 +89,6 @@ export function wireAgentSettings(button: HTMLButtonElement): void {
       };
       form.onsubmit = event => { event.preventDefault(); void submit(false); };
       test.onclick = () => void submit(true);
-      const state = await agentRequest("status") as { configured: boolean; state: string; lastError: string | null };
       status.textContent = `${state.configured ? state.state : "Not configured"}${state.lastError ? ` — ${state.lastError}` : ""}`;
     }).catch(error => { status.textContent = error instanceof Error ? error.message : String(error); });
   });

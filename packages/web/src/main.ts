@@ -149,7 +149,7 @@ const suggestBtn = $<HTMLButtonElement>("#suggest-btn");
 const shareBtn = $<HTMLButtonElement>("#share-btn");
 const exportBtn = $<HTMLButtonElement>("#export-btn");
 const displayBtn = $<HTMLButtonElement>("#display-btn");
-wireAgentSettings($<HTMLButtonElement>("#agent-settings-btn"));
+wireAgentSettings($<HTMLButtonElement>("#agent-settings-btn"), () => current);
 const insightBtn = $<HTMLButtonElement>("#insight-btn");
 const replayBar = $("#replay-bar");
 const replayRange = $<HTMLInputElement>("#replay-range");
@@ -881,10 +881,7 @@ function renderRail(): void {
         const resolve = document.createElement("button");
         resolve.textContent = t.resolved ? "Reopen" : "Resolve";
         resolve.onclick = () => { comments!.setResolved(t.id, !t.resolved); renderRail(); };
-        const del = document.createElement("button");
-        del.textContent = "Delete";
-        del.onclick = () => { comments!.remove(t.id); renderRail(); };
-        actions.append(resolve, del);
+        actions.append(resolve);
         card.append(actions);
         if (openReplies.has(replyKey) && shareRole !== "view") {
           const form = document.createElement("form"); form.className = "reply-composer";

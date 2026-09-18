@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 WORKSPACE = Path(__file__).resolve().parents[1]
@@ -147,10 +148,27 @@ class NativeForkTests(unittest.TestCase):
                                   capture_output=True, env=dict(os.environ), cwd=self.root, timeout=40)
         self.assertEqual(response.returncode, 0, response.stderr[-2000:])
         replies = [json.loads(line) for line in response.stdout.splitlines() if line.strip()]
-        self.assertEqual(replies[0]["result"]["capabilities"], ["fork_delivery", "prompt"])
+        self.assertEqual(replies[0]["result"]["capabilities"], ["fork_delivery", "wait_delivery", "prompt"])
         result = replies[1].get("result")
         self.assertIsNotNone(result, replies[1])
         self.assertEqual(len(self.db.get_messages(result["sessionId"])), 4)
+
+    def test_delivery_wait_does_not_choose_an_old_or_unrelated_answer(self):
+        cancelled = threading.Event()
+        self.db.create_session("unrelated", source="cli", model="other")
+        self.db.append_messages_batch("unrelated", [{"role": "assistant", "content": "Not this session", "finish_reason": "stop"}])
+        with self.assertRaises(TimeoutError):
+            bridge.wait_delivery(self.db, "original", self.delivery, cancelled, timeout=0)
+        self.db.append_messages_batch("original", [{"role": "user", "content": "Launch review"},
+            {"role": "assistant", "content": "Tool preamble", "finish_reason": "tool_calls", "tool_calls": [{"id": "pending"}]}])
+        with self.assertRaises(TimeoutError):
+            bridge.wait_delivery(self.db, "original", self.delivery, cancelled, timeout=0)
+        self.db.append_messages_batch("original", [{"role": "assistant", "content": "Review ready", "finish_reason": "stop"}])
+        result = bridge.wait_delivery(self.db, "original", self.delivery, cancelled, timeout=0)
+        self.assertEqual(result, {"sessionId": "original", "messageId": self.db.get_messages("original")[-1]["id"]})
+        cancelled.set()
+        with self.assertRaisesRegex(RuntimeError, "cancelled"):
+            bridge.wait_delivery(self.db, "original", self.delivery, cancelled)
 
     def test_native_tui_lazily_resumes_only_the_child_without_a_model(self):
         result = bridge.fork_delivery(self.db, "original", self.delivery)

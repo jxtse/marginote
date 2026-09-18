@@ -140,7 +140,7 @@ export class MarginoteServer {
   private startRoomSweep(): void {
     this.roomSweep = setInterval(() => {
       for (const [path, room] of this.rooms) {
-        if (room.size === 0 && !this.agent.busy(room) && !this.conversations.busy(path)) {
+        if (room.size === 0 && !this.agent.busy(room) && !this.conversations.busy(path) && !this.conversations.connecting(path)) {
           this.agent.detach(room);
           this.conversations.detach(room);
           room.destroy();

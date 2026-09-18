@@ -41,6 +41,8 @@ if (args.includes("--help") || args.includes("-h")) {
     --origin-provider <id> codex (default), claude-code, or hermes
     --origin-session <id> Attach the original native session to the review link
     --origin-turn <id>    Exact delivery turn; pair with --origin-session and --doc
+    --origin-after <row>  Hermes only: wait for this session's next completed answer
+    --no-connect          Keep a manual Connect button instead of connecting the origin
     --open                Open the review link in the default browser
     --host <addr>         Bind address (default 127.0.0.1, local only)
     --allow-host <name>   Additionally trust this hostname (repeatable). Needed only
@@ -71,15 +73,19 @@ const flag = (name, fallback) => {
   return i === -1 ? fallback : args[i + 1];
 };
 
-const valueFlags = new Set(["--port", "--host", "--allow-host", "--doc", "--origin-provider", "--origin-session", "--origin-turn"]);
+const valueFlags = new Set(["--port", "--host", "--allow-host", "--doc", "--origin-provider", "--origin-session", "--origin-turn", "--origin-after"]);
 const documentPath = flag("--doc", null);
 const originSession = flag("--origin-session", null);
-const originTurn = flag("--origin-turn", null);
+const originAfter = flag("--origin-after", null);
+const originTurn = flag("--origin-turn", null) ?? (originAfter !== null ? `after-${originAfter}` : null);
 const originProvider = flag("--origin-provider", "codex");
-for (const name of ["--doc", "--origin-provider", "--origin-session", "--origin-turn"]) {
+for (const name of ["--doc", "--origin-provider", "--origin-session", "--origin-turn", "--origin-after"]) {
   if (args.includes(name) && (!flag(name, null) || flag(name, "").startsWith("--"))) {
     console.error(`Missing value for ${name}`); process.exit(1);
   }
+}
+if (originAfter !== null && (originProvider !== "hermes" || args.includes("--origin-turn") || !/^(0|[1-9]\d{0,15})$/.test(originAfter) || !Number.isSafeInteger(Number(originAfter)))) {
+  console.error("Use --origin-after with a nonnegative native Hermes message row, without --origin-turn."); process.exit(1);
 }
 if (!["codex", "claude-code", "hermes"].includes(originProvider) || (args.includes("--origin-provider") && !originSession)) {
   console.error("Use --origin-provider codex|claude-code|hermes with the exact origin session and delivery IDs."); process.exit(1);
@@ -171,6 +177,17 @@ try {
 const count = server.vault.list().length;
 if (documentPath && !server.vault.list().includes(documentPath)) {
   console.error(`Document not found in vault: ${documentPath}`); await server.close(); process.exit(1);
+}
+if (originSession && originTurn && !args.includes("--no-connect")) {
+  const origin = { provider: originProvider, sessionId: originSession, turnId: originTurn };
+  const existing = server.conversations.status(documentPath);
+  if (existing && (existing.origin.provider !== originProvider || existing.origin.sessionId !== originSession || existing.origin.turnId !== originTurn)) {
+    console.error("This document is already bound to a different delivery. Open its conversation details and disconnect explicitly before replacing it.");
+    await server.close(); process.exit(1);
+  }
+  if (!existing) void server.conversations.bind(server.room(documentPath), origin, true).catch(error => {
+    console.error(`Conversation connection failed: ${error.message}. See the review page to retry or disconnect.`);
+  });
 }
 const reviewUrl = new URL(`http://127.0.0.1:${server.port}/`);
 if (documentPath) reviewUrl.searchParams.set("doc", documentPath);

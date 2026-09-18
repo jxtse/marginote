@@ -46,7 +46,7 @@ for (const entry of ["dist/marginote.js", "dist/marginote-mcp.js"]) {
 
 const pkg = JSON.parse(await readFile(join(cli, "package.json"), "utf8"));
 const expectedLicense = "AGPL-3.0-or-later";
-for (const required of ["plugins/marginote-hermes/plugin.yaml", "plugins/marginote-hermes/__init__.py", "plugins/marginote-hermes/bridge.py", "plugins/marginote-hermes/runtime.py"]) {
+for (const required of ["plugins/marginote-hermes/plugin.yaml", "plugins/marginote-hermes/__init__.py", "plugins/marginote-hermes/bridge.py", "plugins/marginote-hermes/runtime.py", "plugins/marginote-hermes/launcher.py"]) {
   if (!(await exists(required))) problems.push(`missing Hermes plugin file ${required}`);
 }
 const expectedBins = { marginote: "dist/marginote.js", "marginote-mcp": "dist/marginote-mcp.js" };

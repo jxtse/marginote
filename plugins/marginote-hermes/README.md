@@ -9,19 +9,47 @@ The Codex/Claude launcher skill is in the sibling `marginote` directory.
 Place this entire directory at `plugins/marginote-hermes` under the **originating Hermes
 profile's home**, then run `hermes plugins list` and `hermes plugins enable marginote-hermes`
 in that profile. Keep any existing installation until you have reviewed an update. The
-current checkout has only been installed in disposable test profiles, not a real profile.
+checks use disposable profiles; updating this checkout does not update an installed plugin.
 
-Start Marginote from the same profile environment, with `hermes` on PATH:
+Inside the originating Hermes conversation, ask the agent to run this in a background terminal:
 
 ```sh
-marginote /path/to/project --doc report.md --port 0 --no-discover --open \
-  --origin-provider hermes --origin-session EXACT_SESSION_ID --origin-turn EXACT_ROW_ID
+hermes marginote report.md
 ```
+
+The launcher uses `HERMES_SESSION_ID` from that command's native session environment,
+keeps the profile, chooses a free local port, opens the document and connects automatically
+after the current answer is saved. The agent should give you the printed URL and finish its
+answer, not wait for connection in the launching turn. The page displays Connecting, then
+Ready, the inherited model/provider/reasoning level and the copied history counts.
+Do not create a throwaway `hermes chat` just to obtain session IDs: that only inherits the
+throwaway chat's history. Existing comments are not replayed; comments posted while connecting
+are queued. Each new request gets a `👀 received · reading…` receipt, followed by the answer.
+
+If `marginote` is not on PATH, point the plugin at the existing built installation **once**:
+
+```sh
+hermes marginote --setup /path/to/marginote/packages/cli/bin/marginote.js
+```
+
+This records only the plugin's CLI command in the current profile's settings. It does not
+install packages or change model settings. Use `--root /path/to/project` when dependencies
+need a larger vault, or `--no-open` to print the URL without opening a browser. Outside an
+active Hermes turn, supply `--session EXACT_ID --turn COMPLETED_ROW`; absent identity fails
+explicitly. The launcher never chooses a most-recent session. A vault already served by
+Marginote must reuse that server's URL or be stopped before launching another server.
+
+The lower-level CLI still accepts `--origin-provider hermes --origin-session EXACT_ID
+--origin-turn COMPLETED_ROW`, paired with `--doc`. Origin flags now auto-connect;
+`--no-connect` retains the manual Connect button. No separate MCP configuration is required:
+the server invokes `hermes marginote-bridge` over local stdio JSON-RPC, and the plugin adds
+the two artifact tools directly to the native agent.
 
 The native CLI selects the profile normally, including inherited `HERMES_HOME`. The
 adapter does not scan other profiles, copy credentials or restart a gateway. One server
-uses one Hermes profile. Use IDs from the actual delivery runtime and connect only after
-the assistant answer has completed. Missing native APIs or profile data fail explicitly.
+uses one Hermes profile. The launcher waits for a completed answer in that exact session;
+if compression rotates it while waiting, reopen review from its current session. Missing
+native APIs or profile data fail explicitly.
 
 ## Native preparation contract
 
@@ -51,7 +79,7 @@ The protocol is local stdio JSON-RPC, one object per line, requests at most 1 Mi
 {"id":2,"method":"fork_delivery","params":{"sessionId":"EXACT_ID","messageId":123}}
 ```
 
-The first response declares `protocolVersion: 1` and `capabilities: ["fork_delivery", "prompt"]`.
+The first response declares `protocolVersion: 1` and `capabilities: ["fork_delivery", "wait_delivery", "prompt"]`.
 The second returns the new `sessionId`, origin, delivery row, model, cwd and message counts.
 It never returns credentials or transcript contents. Clients cannot choose a database path.
 
@@ -67,6 +95,9 @@ artifact tools and reviewable native permission requests to Marginote.
 Changes proposed through `marginote_suggest_edit` remain pending until the human accepts
 them. Native approval requests receive only `once` or `deny`, scoped to the exact request;
 unsupported interactive requests fail closed. No session-wide approval is emitted.
+Both peer JSON-RPC `approval` requests and legacy `approval.request` events are supported.
+Peer responses use the incoming wire ID; the distinct approval queue ID identifies the
+human review. Registering the two artifact tools does not require `tools.override` permission.
 Cancellation revokes callbacks and stops only the owned native turn/process. This plugin
 does not invoke the TUI entry point that also schedules profile-wide orphan cleanup.
 
@@ -86,22 +117,33 @@ From the source checkout, use the Python interpreter belonging to the user's ins
 Hermes environment (no global package installation):
 
 ```sh
+python3 scripts/check-hermes-protocol.py
 /path/to/hermes/venv/bin/python scripts/check-hermes-fork.py
+/path/to/hermes/venv/bin/python scripts/check-hermes-launcher.py
 /path/to/hermes/venv/bin/python scripts/check-hermes-runtime.py
 ```
 
-The check creates isolated temporary Hermes profiles and native SQLite sessions. It covers
+The protocol check uses only the Python standard library and covers request correlation,
+one-time consent, denial, cancellation and rejection of unsupported or foreign-session
+requests. The fork check creates isolated temporary Hermes profiles and native SQLite sessions. It covers
 delivery boundaries, exact sidecars, active/compacted history, legacy compression ancestry,
 invalid metadata, concurrent parent updates, rollback, discovery through the installed
 `hermes` CLI, and lazy restoration through the real TUI dispatcher without building an
 agent. It never reads real sessions or submits a model prompt.
 
-The runtime check uses the installed CLI, native AIAgent and native tool system against
+The launcher check runs the short command, verifies the pending connection, completes only
+the calling session's delivery and checks automatic binding and inherited metadata without
+starting a model. The runtime check uses the installed CLI, native AIAgent and native tool system against
 an isolated loopback fake model. It verifies inherited history, actual Marginote
 read/propose/accept behavior, another-process follow-up and rejection of a native terminal
 permission request. It independently checks the original session's rows and metadata.
 Auxiliary native title requests are distinguished from discussion requests. No real
-conversation, provider credential or external model is used.
+conversation, provider credential or external model is used. Its profile default model
+deliberately differs from the delivery model to detect accidental global-default restoration.
+The synthetic profile selects manual approvals and disables optional Tirith downloads;
+the native dangerous-command approval gate remains active. Failed runs retain their
+synthetic profile and logs at the printed path, so cleanup cannot remove a database
+still held by an exiting native process. Successful runs remove their temporary profile.
 
 Protocol unit tests cover bad child IDs, missing model identity, unsupported bridge
 versions, permission denial and cancellation. Deterministic Chromium tests cover browser

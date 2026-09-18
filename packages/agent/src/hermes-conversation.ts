@@ -1,4 +1,4 @@
-import type { ConversationOrigin, ConversationProvider, ConversationRun } from "./conversation-provider.js";
+import type { ConversationOrigin, ConversationProvider, ConversationRun, ConversationSnapshot } from "./conversation-provider.js";
 import { NativeRpc } from "./native-rpc.js";
 
 /** Uses the installed native Hermes plugin; no cross-provider fallback. */
@@ -14,14 +14,25 @@ export class HermesConversationProvider implements ConversationProvider {
     } catch (error) { await rpc.close(); throw error; }
   }
 
-  async fork(origin: ConversationOrigin, signal: AbortSignal): Promise<string> {
-    if (origin.provider !== "hermes" || !/^[1-9]\d{0,15}$/.test(origin.turnId) || !Number.isSafeInteger(Number(origin.turnId))) throw new Error("Hermes requires the exact positive native delivery message row ID");
-    const rpc = await this.open(signal, "fork_delivery");
+  async fork(origin: ConversationOrigin, signal: AbortSignal): Promise<ConversationSnapshot> {
+    const pending = /^after-(0|[1-9]\d{0,15})$/.exec(origin.turnId);
+    if (origin.provider !== "hermes" || (!pending && !/^[1-9]\d{0,15}$/.test(origin.turnId)) || !Number.isSafeInteger(Number(pending?.[1] ?? origin.turnId))) throw new Error("Hermes requires the exact positive native delivery message row ID or a current-session delivery marker");
+    const rpc = await this.open(signal, pending ? "wait_delivery" : "fork_delivery");
     try {
-      const result = await rpc.request("fork_delivery", { sessionId: origin.sessionId, messageId: Number(origin.turnId) });
-      if (result?.originSessionId !== origin.sessionId || result.deliveryRowId !== Number(origin.turnId) ||
+      let delivery = Number(origin.turnId);
+      if (pending) {
+        const ready = await rpc.request("wait_delivery", { sessionId: origin.sessionId, afterMessageId: Number(pending[1]) }, 600_000);
+        if (ready?.sessionId !== origin.sessionId || !Number.isSafeInteger(ready.messageId) || ready.messageId <= Number(pending[1])) throw new Error("Hermes returned an invalid completed delivery");
+        delivery = ready.messageId;
+      }
+      const result = await rpc.request("fork_delivery", { sessionId: origin.sessionId, messageId: delivery });
+      if (result?.originSessionId !== origin.sessionId || result.deliveryRowId !== delivery ||
         typeof result.sessionId !== "string" || result.sessionId === origin.sessionId || !/^[\w-]{1,160}$/.test(result.sessionId)) throw new Error("Hermes did not return the expected independent delivery snapshot");
-      return result.sessionId;
+      if (typeof result.model !== "string" || !result.model || typeof result.provider !== "string" || !result.provider ||
+          !Number.isSafeInteger(result.activeMessages) || result.activeMessages < 1 || !Number.isSafeInteger(result.archivedMessages) || result.archivedMessages < 0) throw new Error("Update marginote-hermes: the installed plugin did not identify the inherited model and history");
+      return { sessionId: result.sessionId, deliveryTurnId: String(delivery), model: result.model, provider: result.provider,
+        reasoningEffort: typeof result.reasoningEffort === "string" ? result.reasoningEffort : null,
+        activeMessages: result.activeMessages, archivedMessages: result.archivedMessages };
     } finally { await rpc.close(); }
   }
 

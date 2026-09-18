@@ -1,6 +1,7 @@
 """Native Hermes + actual Marginote tools against a local fake model, no external AI."""
 
 import copy
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,20 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 WORKSPACE = Path(__file__).resolve().parents[1]
+
+
+@contextmanager
+def synthetic_profile():
+    directory = tempfile.mkdtemp(prefix="marginote-hermes-runtime-")
+    try:
+        yield directory
+    except BaseException:
+        # A failed/aborted runner may still own native handles. Retain the
+        # synthetic DB and logs instead of deleting its live WAL generation.
+        print(f"FAIL: synthetic Hermes profile retained at {directory}", flush=True)
+        raise
+    else:
+        shutil.rmtree(directory)
 
 
 def run():
@@ -105,15 +120,18 @@ def run():
     worker = threading.Thread(target=httpd.serve_forever, daemon=True)
     worker.start()
     try:
-        with tempfile.TemporaryDirectory(prefix="marginote-hermes-runtime-") as directory:
+        with synthetic_profile() as directory:
             root = Path(directory).resolve()
             os.environ["HERMES_HOME"] = str(root)
             from hermes_state import SessionDB
 
             url = f"http://127.0.0.1:{httpd.server_port}/v1"
-            config = {"model": {"default": "synthetic-model", "provider": "custom:fixture", "base_url": url},
+            config = {"model": {"default": "different-profile-default", "provider": "custom:fixture", "base_url": url},
                       "custom_providers": [{"name": "fixture", "base_url": url, "api_key": "synthetic-key", "api_mode": "chat_completions"}],
                       "plugins": {"enabled": ["marginote-hermes"]}, "fallback_providers": [], "memory": {"memory_enabled": False, "user_profile_enabled": False},
+                      # Exercise human approval deterministically, without a
+                      # guardian model or downloading an optional scanner.
+                      "approvals": {"mode": "manual"}, "security": {"tirith_enabled": False},
                       "display": {"skin": "default"}}
             (root / "config.yaml").write_text(json.dumps(config))
             shutil.copytree(WORKSPACE / "plugins" / "marginote-hermes", root / "plugins" / "marginote-hermes", ignore=shutil.ignore_patterns("__pycache__"))
@@ -140,6 +158,9 @@ def run():
                 assert len(db.get_messages(result["child"])) > len(original)
                 assert len(requests) >= 4
                 assert not failures, failures
+                errors = root / "logs" / "errors.log"
+                if errors.exists():
+                    assert "FATAL: state.db" not in errors.read_text(), "Native database generation was lost"
                 print(checked.stdout.strip())
                 print("PASS: original native session unchanged; every model request stayed on the isolated loopback fixture.")
             finally:

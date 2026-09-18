@@ -22,6 +22,13 @@ packages globally, change provider settings, copy credentials, or restart unrela
    the agent's supported persistent/background terminal. Give the user its printed URL
    and the stop command or terminal reference.
 
+For Hermes with the native plugin enabled, prefer `hermes marginote report.md` in its
+background terminal. The launcher infers the exact current session and profile, opens the
+page, and waits for this turn's completed delivery before auto-connecting. Give the printed
+URL and finish the current answer; do not wait for connection inside the same turn. If
+necessary, configure the existing CLI path once with `hermes marginote --setup CLI_PATH`.
+Do not start a new `hermes chat` merely to obtain IDs: that loses the original discussion.
+
 ## Continue the original conversation
 
 - Obtain the exact originating session ID and completed delivery boundary from the current
@@ -35,15 +42,17 @@ packages globally, change provider settings, copy credentials, or restart unrela
   `marginote-hermes` native plugin must be installed and enabled in the originating
   Hermes profile. Launch Marginote with that same profile environment; do not search
   other profiles or substitute a message ordinal for its native SQLite row ID.
-- The human clicks **Connect conversation** after that delivery turn has completed.
-  The server verifies the boundary, forks the native history, and saves the child ID.
-  A currently active delivery turn cannot be attached yet; let the turn finish.
+- CLI origin flags automatically connect the exact completed delivery. The short Hermes
+  launcher also waits for completion. An MCP-generated review link or `--no-connect`
+  retains the manual **Connect conversation** button. The server verifies the boundary,
+  forks native history, and saves the child ID; connecting alone does not call a model.
 - If the exact IDs are unavailable, open the standalone editor and explain that the
   original conversation is not attached. Do not claim a completed conversation handoff.
 - Human comments and follow-ups continue one child session per artifact. Respect
   existing model and tool permissions. Never answer your own approval requests.
 - The native continuation attaches `marginote_read_document` and `marginote_suggest_edit`
-  automatically. Read the current revision, then propose a unique exact replacement.
+  automatically. Hermes uses its native plugin tools over local CLI/JSON-RPC and does not
+  need separate MCP setup. Read the current revision, then propose a unique exact replacement.
   Document locks, budgets and attribution apply; the human accepts or rejects it in
   the browser. Use these tools for artifact changes instead of filesystem edits, which
   do not enforce the editor's policies. Never claim an unaccepted suggestion is saved.
@@ -60,5 +69,6 @@ This plugin includes Codex and Claude Code entry points. Claude's native fork an
 initialization are verified with synthetic sessions; live-model continuation is still
 unverified. Hermes has native snapshot and continuation checks using a local fake model,
 including real artifact tools and a denied native permission. Its external-model workflow,
-automatic delivery hooks and enforced native edit routing remain unverified or unfinished.
+enforced native edit routing remain unverified or unfinished. Its CLI delivery wait and
+automatic connection are covered by the native launcher check.
 The standalone editor keeps its optional pi agent mode.

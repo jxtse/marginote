@@ -8,6 +8,7 @@ import re
 import sys
 import signal
 import threading
+import time
 import uuid
 
 MAX_ROWS = 20_000
@@ -146,12 +147,37 @@ def fork_delivery(db, session_id, message_id):
         if any(latest.get(key) != source.get(key) for key in ("model", "model_config", "system_prompt", "cwd", "billing_provider", "profile_name")):
             raise ValueError("Hermes runtime metadata changed during the fork; retry from a stable delivery")
         return {"sessionId": child_id, "originSessionId": session_id, "deliveryRowId": message_id,
-                "model": source["model"], "cwd": cwd, "activeMessages": len(active), "archivedMessages": len(archives)}
+                "model": source["model"], "provider": provider, "reasoningEffort": (config.get("reasoning_config") or {}).get("effort"),
+                "cwd": cwd, "activeMessages": len(active), "archivedMessages": len(archives)}
     except BaseException:
         if created:
             if not db.delete_session(child_id, expected_delete_ids=[child_id]):
                 raise RuntimeError(f"Snapshot validation failed; inspect incomplete child {child_id}")
         raise
+
+
+def wait_delivery(db, session_id, after_message_id, cancelled, timeout=570):
+    """Wait only for this caller's next completed answer, never a recent session."""
+    if not isinstance(session_id, str) or not ID.fullmatch(session_id):
+        raise ValueError("An exact Hermes session ID is required")
+    if isinstance(after_message_id, bool) or not isinstance(after_message_id, int) or after_message_id < 0:
+        raise ValueError("Invalid delivery marker")
+    deadline = time.monotonic() + timeout
+    while not cancelled.is_set():
+        source = db.get_session(session_id)
+        if not source:
+            raise ValueError("The originating Hermes session is unavailable in this profile")
+        if source.get("end_reason") == "compression":
+            raise RuntimeError("Hermes rotated the originating session; reopen review from its current session")
+        for row in _rows(db, session_id):
+            if (row["id"] > after_message_id and row.get("active") and row["role"] == "assistant"
+                    and row.get("content") and not row.get("tool_calls") and not row.get("display_kind")
+                    and row.get("finish_reason") in {"stop", "end_turn", "stop_sequence"}):
+                return {"sessionId": session_id, "messageId": row["id"]}
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Hermes delivery has not completed; finish the originating turn, then retry connecting")
+        cancelled.wait(0.25)
+    raise RuntimeError("Hermes delivery wait cancelled")
 
 
 class BridgePeer:
@@ -252,7 +278,12 @@ def main(ctx=None):
                     peer.receive(request)
                     continue
                 if method == "initialize":
-                    result = {"protocolVersion": 1, "capabilities": ["fork_delivery"] + (["prompt"] if ctx is not None else [])}
+                    result = {"protocolVersion": 1, "capabilities": ["fork_delivery", "wait_delivery"] + (["prompt"] if ctx is not None else [])}
+                elif method == "wait_delivery":
+                    if peer.worker is not None:
+                        raise ValueError("Cannot wait for delivery during a native conversation")
+                    params = request.get("params", {})
+                    result = wait_delivery(db, params.get("sessionId"), params.get("afterMessageId"), peer.cancelled)
                 elif method == "fork_delivery":
                     if peer.worker is not None:
                         raise ValueError("Cannot fork during a native conversation")

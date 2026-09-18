@@ -28,9 +28,19 @@ export interface ConversationTools {
 
 export interface ConversationProvider {
   /** Must return a distinct native session containing the original history. */
-  fork(origin: ConversationOrigin, signal: AbortSignal): Promise<string>;
+  fork(origin: ConversationOrigin, signal: AbortSignal): Promise<string | ConversationSnapshot>;
   /** Continue the child, never the original session. */
   prompt(sessionId: string, text: string, run: ConversationRun): Promise<string>;
+}
+
+export interface ConversationSnapshot {
+  sessionId: string;
+  deliveryTurnId: string;
+  model: string;
+  provider: string;
+  reasoningEffort: string | null;
+  activeMessages: number;
+  archivedMessages: number;
 }
 
 export function parseOrigin(input: unknown): ConversationOrigin {

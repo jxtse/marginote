@@ -15,7 +15,7 @@ node packages/cli/bin/marginote.js /path/to/project --port 0 --no-discover \
 ```
 
 Use IDs obtained from the originating runtime, not the most recently used session.
-Click **Connect conversation** after the delivery turn completes. For an existing MCP
+CLI origin flags connect automatically; `--no-connect` retains a manual button. For an existing MCP
 connection, `review_document` creates the same link. Opening a link alone does not fork
 or call a model. Connecting forks native history without starting a model turn. New
 human comments then use the originating installed/authenticated agent. Codex is the
@@ -25,13 +25,25 @@ For Hermes use `--origin-provider hermes` and its native `messages.id` row numbe
 `--origin-turn`; MCP uses `origin_provider: "hermes"`. The native Hermes plugin must be
 enabled in the originating profile, and Marginote must inherit that profile environment.
 
+Inside Hermes, prefer `hermes marginote report.md` in a background terminal. The native
+launcher infers the calling session and captures its current message boundary, then waits
+for that session's next completed answer before connecting. Finish the launching turn
+after sharing the printed URL. It never creates a placeholder chat or chooses a recent
+session. The page exposes the inherited model, provider, reasoning effort and history counts.
+See the plugin's one-time `--setup` option if the existing Marginote CLI is not on PATH.
+
 ## Runtime contract
 
 - In Codex, `thread/read` validates that the delivery turn exists and completed; `thread/fork`
   pins `lastTurnId`. The returned child must be distinct and name the expected parent.
-- Every Codex comment run uses `thread/resume` on that child, then `turn/start`. No model,
-  provider, sandbox or approval override is sent. History stays in Codex's native store.
-- Each run attaches a short-lived authenticated loopback MCP server through a
+- Every Codex comment run uses `thread/resume` on that child, then `turn/start`. Codex
+  0.151.0 can otherwise select the current profile default model on fork/resume. Marginote
+  therefore reads the exact delivery's recorded model, provider and explicit reasoning
+  effort from the native rollout path returned by `thread/read`, and passes them to both
+  operations. The returned model/provider must match before a turn starts. Missing or
+  unsupported metadata fails explicitly. No sandbox or approval override is sent.
+  History stays in Codex's native store; the rollout is read-only and bounded to 64 MiB.
+- Each Codex run attaches a short-lived authenticated loopback MCP server through a
   process-local configuration override. Its two tools read the bound artifact and
   propose exact replacements against a freshly read source revision. Native tool
   discovery must succeed before a Codex model turn starts. Global Codex configuration is
@@ -102,6 +114,13 @@ The shared plugin includes `.claude-plugin/plugin.json`; it can be checked local
 `claude plugin validate plugins/marginote`. See the official
 [plugin reference](https://code.claude.com/docs/en/plugins-reference) for installation.
 
+On 2026-09-18 `node scripts/check-claude-runtime.mjs` also passed with the installed
+Claude Code 2.1.243 and SDK 0.3.272 against a local streaming model fixture. It verifies
+the exact inherited history/model, excludes later parent messages, calls the real artifact
+read/propose tools, checks disk preservation until acceptance, resumes in another process,
+and declines a native deletion request. The original transcript remains byte-identical.
+It uses a disposable Claude configuration and synthetic credentials, not an external model.
+
 ### Codex and shared workflows
 
 Protocol and lifecycle tests cover fork boundary, child-only resume, early notification
@@ -140,6 +159,14 @@ node scripts/check-native-tools.mjs
 An empty native test session has no persisted rollout, so this local check intentionally
 does not prove cross-process resume or model-driven tool use.
 
+`node scripts/check-codex-runtime.mjs` adds full local native coverage with Codex 0.151.0:
+it creates a real persisted source using a loopback Responses fixture, forks only through
+the selected completed turn, exercises native read/propose/accept, and resumes the child
+in another app-server process. Changing the profile-default model after delivery must not
+change the child's recorded model. The original rollout remains byte-identical and no
+real credentials or external model are used. These checks cover native protocol behavior;
+the fixture chooses tool calls deterministically, so it does not test model judgment.
+
 ### Hermes native adapter
 
 The separate `plugins/marginote-hermes` package now prepares an exact delivery snapshot
@@ -148,6 +175,9 @@ sidecars and searchable compacted history. Source sessions remain independent. T
 against temporary native databases and the installed Hermes plugin discovery and TUI lazy
 resume paths; no model is started. See the [Hermes plugin contract](../plugins/marginote-hermes/README.md).
 The browser now routes Hermes comments to a dedicated `hermes marginote-bridge` process.
+This is local stdio JSON-RPC, with native plugin tools; no separately configured MCP
+server is needed. Comments get an immediate receipt when processing begins. Resolve/Reopen
+preserves the thread instead of deleting it.
 It resumes only the verified child through native TUI protocol handlers, validates the
 restored model/provider/endpoint, and registers the two artifact tools for that process.
 Native Tool Search and existing tool selection remain in use. Tool attribution refreshes
@@ -162,6 +192,8 @@ human acceptance, a second-process follow-up, and a denied native terminal permi
 The original session's rows and metadata remained unchanged. Run with Hermes's own Python:
 
 ```sh
+python3 scripts/check-hermes-protocol.py
+/path/to/hermes/venv/bin/python scripts/check-hermes-launcher.py
 /path/to/hermes/venv/bin/python scripts/check-hermes-runtime.py
 ```
 

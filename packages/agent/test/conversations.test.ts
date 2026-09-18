@@ -108,7 +108,7 @@ describe("artifact conversations", () => {
     await manager.bind(room, origin);
     const id = add(); await idle();
     await new Promise(resolve => setTimeout(resolve, 450));
-    expect(store.list()[0]!.replies).toHaveLength(1);
+    expect(store.list()[0]!.replies.map(r => r.body)).toEqual(["👀 received · reading…", "Native answer"]);
     registerAuthor(room.handle.doc, { id: "another-agent", name: "Other", kind: "agent", color: "blue" });
     store.reply(id, "External observation", "another-agent", "Other"); await idle();
     expect(provider.prompt).toHaveBeenCalledTimes(1);
@@ -139,7 +139,7 @@ describe("artifact conversations", () => {
     resolvers.shift()!("First answer"); await vi.waitFor(() => expect(provider.prompt).toHaveBeenCalledTimes(2));
     expect(vi.mocked(provider.prompt).mock.calls[1]![1]).toContain("Another detail");
     resolvers.shift()!("Follow-up answer"); await idle();
-    expect(store.list()[0]!.replies.map(r => r.body)).toEqual(["Another detail", "First answer", "Follow-up answer"]);
+    expect(store.list()[0]!.replies.map(r => r.body)).toEqual(["👀 received · reading…", "Another detail", "First answer", "👀 received · reading…", "Follow-up answer"]);
   });
   it("holds native approval until an explicit matching decision and rejects stale decisions", async () => {
     vi.mocked(provider.prompt).mockImplementation(async (_session, _text, run) => {
@@ -148,10 +148,10 @@ describe("artifact conversations", () => {
     });
     await manager.bind(room, origin); add();
     await vi.waitFor(() => expect(manager.status("report.md")?.state).toBe("approval"));
-    expect(store.list()[0]!.replies).toHaveLength(0);
+    expect(store.list()[0]!.replies.map(r => r.body)).toEqual(["👀 received · reading…"]);
     expect(() => manager.decide("report.md", "wrong", true)).toThrow(/expired/);
     manager.decide("report.md", "approval-1", false); await idle();
-    expect(store.list()[0]!.replies[0]!.body).toBe("Declined");
+    expect(store.list()[0]!.replies.at(-1)!.body).toBe("Declined");
     expect(() => manager.decide("report.md", "approval-1", true)).toThrow(/expired/);
   });
   it("does not auto-retry uncertain native failures or an interrupted persisted turn", async () => {
@@ -180,7 +180,7 @@ describe("artifact conversations", () => {
     room.handle.path = "renamed.md";
     vault.emit("doc:rename", { from: "report.md", to: "renamed.md" });
     expect(manager.owns("report.md")).toBe(false); expect(manager.owns("renamed.md")).toBe(true);
-    add(); await vi.waitFor(() => expect(store.list()[0]!.replies).toHaveLength(1));
+    add(); await vi.waitFor(() => expect(store.list()[0]!.replies.at(-1)?.body).toBe("Native answer"));
     expect(vi.mocked(provider.prompt).mock.calls[0]![1]).toContain("renamed.md");
     vault.emit("doc:delete", { path: "renamed.md" });
     expect(manager.status("renamed.md")?.error).toContain("deleted");
@@ -196,5 +196,56 @@ describe("artifact conversations", () => {
     await manager.close(); await writeFile(join(root, ".marginote/conversations.json"), "{}");
     manager = new ArtifactConversations(vault, provider);
     await expect(manager.load()).rejects.toThrow(/Invalid/);
+  });
+
+  it("shows pending handoff, preserves inherited metadata and reports the actual model", async () => {
+    let deliver!: (value: Awaited<ReturnType<ConversationProvider["fork"]>>) => void;
+    vi.mocked(provider.fork).mockImplementation(() => new Promise(resolve => { deliver = resolve; }));
+    const source = { provider: "hermes", sessionId: "current-session", turnId: "after-40" };
+    const connecting = manager.bind(room, source, true);
+    expect(manager.status("report.md")).toMatchObject({ state: "connecting", sessionId: null });
+    expect(manager.owns("report.md")).toBe(true);
+    add("While the delivery is finishing");
+    vi.mocked(provider.prompt).mockImplementation(async (_session, prompt, run) => {
+      expect(prompt).toContain("no separate MCP setup is required");
+      expect(prompt).not.toContain("attached Marginote MCP server");
+      run.tools!.setModel("runtime-model");
+      return "Answered";
+    });
+    deliver({ sessionId: "native-child", deliveryTurnId: "44", model: "delivery-model", provider: "native-route", reasoningEffort: "high", activeMessages: 12, archivedMessages: 4 });
+    await connecting; await idle();
+    expect(manager.status("report.md")).toMatchObject({ origin: { ...source, turnId: "44" },
+      snapshot: { model: "delivery-model", activeMessages: 12 }, currentModel: "runtime-model" });
+    await manager.close();
+    manager = new ArtifactConversations(vault, provider); await manager.load();
+    expect(manager.status("report.md")?.snapshot?.activeMessages).toBe(12);
+  });
+
+  it("retains automatic connection failures without silently using the embedded agent", async () => {
+    vi.mocked(provider.fork).mockRejectedValueOnce(new Error("Delivery still active"));
+    await expect(manager.bind(room, origin, true)).rejects.toThrow("Delivery still active");
+    expect(manager.status("report.md")).toMatchObject({ state: "error", error: "Delivery still active" });
+    expect(manager.owns("report.md")).toBe(true); expect(manager.busy("report.md")).toBe(false);
+    expect(manager.connecting("report.md")).toBe(true);
+    add("Queued after connection failed");
+    await manager.retry("report.md"); await idle();
+    expect(provider.prompt).toHaveBeenCalledTimes(1);
+    expect(store.list()[0]!.replies.at(-1)!.body).toBe("Native answer");
+  });
+
+  it("disconnects a pending handoff only after its native wait stops", async () => {
+    let stop!: () => void;
+    vi.mocked(provider.fork).mockImplementation((_origin, signal) => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => { stop = () => reject(new Error("Cancelled waiting for delivery")); });
+    }));
+    const connecting = manager.bind(room, { provider: "hermes", sessionId: "parent", turnId: "after-3" }, true);
+    const checked = expect(connecting).rejects.toThrow("Cancelled waiting for delivery");
+    let stopped = false;
+    const disconnecting = manager.unbind("report.md").then(() => { stopped = true; });
+    await Promise.resolve();
+    expect(stopped).toBe(false); expect(manager.owns("report.md")).toBe(true);
+    stop(); await checked; await disconnecting;
+    expect(manager.status("report.md")).toBeNull(); expect(manager.owns("report.md")).toBe(false);
+    expect(provider.prompt).not.toHaveBeenCalled();
   });
 });

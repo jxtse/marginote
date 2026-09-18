@@ -19,8 +19,9 @@ createInterface({ input: process.stdin }).on("line", async line => {
   const request = JSON.parse(line);
   if (!request.method) { pending.get(request.id)?.(request); pending.delete(request.id); return; }
   let result;
-  if (request.method === "initialize") result = { protocolVersion: 1, capabilities: mode === "old" ? ["fork_delivery"] : ["fork_delivery", "prompt"] };
-  if (request.method === "fork_delivery") result = { sessionId: mode === "parent" ? "original" : "child", originSessionId: request.params.sessionId, deliveryRowId: request.params.messageId };
+  if (request.method === "initialize") result = { protocolVersion: 1, capabilities: mode === "old" ? ["fork_delivery"] : ["fork_delivery", "wait_delivery", "prompt"] };
+  if (request.method === "wait_delivery") result = { sessionId: request.params.sessionId, messageId: mode === "stale" ? request.params.afterMessageId : 43 };
+  if (request.method === "fork_delivery") result = { sessionId: mode === "parent" ? "original" : "child", originSessionId: request.params.sessionId, deliveryRowId: request.params.messageId, model: "native-model", provider: "native-provider", reasoningEffort: "high", activeMessages: 6, archivedMessages: 2 };
   if (request.method === "prompt") {
     if (mode === "hang") return;
     if (mode !== "missing-model") await ask("marginote/model", { model: "native-model" });
@@ -38,9 +39,16 @@ const provider = (mode = "normal") => new HermesConversationProvider(root, proce
 const tools = () => ({ definitions: [], call: vi.fn(async () => ({ content: [{ type: "text" as const, text: "Native source" }] })), setModel: vi.fn(), close: vi.fn() });
 
 it("forks the exact numeric delivery and refuses a parent masquerading as a child", async () => {
-  expect(await provider().fork(origin, AbortSignal.timeout(5000))).toBe("child");
+  expect(await provider().fork(origin, AbortSignal.timeout(5000))).toMatchObject({ sessionId: "child", deliveryTurnId: "42", model: "native-model", provider: "native-provider", activeMessages: 6 });
   await expect(provider("parent").fork(origin, AbortSignal.timeout(5000))).rejects.toThrow(/independent/);
   await expect(provider().fork({ ...origin, turnId: "latest" }, AbortSignal.timeout(5000))).rejects.toThrow(/row ID/);
+});
+
+it("waits for the calling turn's delivery and rejects a stale boundary", async () => {
+  const pending = { ...origin, turnId: "after-42" };
+  expect(await provider().fork(pending, AbortSignal.timeout(5000))).toMatchObject({ sessionId: "child", deliveryTurnId: "43" });
+  await expect(provider("stale").fork(pending, AbortSignal.timeout(5000))).rejects.toThrow(/invalid completed delivery/);
+  await expect(provider("old").fork(pending, AbortSignal.timeout(5000))).rejects.toThrow(/does not support wait_delivery/);
 });
 
 it("bridges scoped artifact tools, native model identity and one-time human decisions", async () => {

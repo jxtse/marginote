@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { ConversationOrigin, ConversationProvider, ConversationRun } from "./conversation-provider.js";
 import { ConversationMcp } from "./conversation-mcp.js";
 import { setTimeout as delay } from "node:timers/promises";
+import { codexDeliverySettings } from "./codex-settings.js";
 
 import { NativeRpc as CodexRpc } from "./native-rpc.js";
 export { NativeRpc as CodexRpc } from "./native-rpc.js";
@@ -14,26 +15,28 @@ export class CodexConversationProvider implements ConversationProvider {
     const rpc = new CodexRpc(this.executable, this.args, this.cwd, signal);
     try {
       await rpc.initialize();
-      const original = await rpc.request("thread/read", { threadId: origin.sessionId, includeTurns: true });
-      const turn = original?.thread?.turns?.find((item: any) => item.id === origin.turnId);
-      if (turn?.status !== "completed") throw new Error("The delivery turn must exist and be completed before handing off");
-      const result = await rpc.request("thread/fork", { threadId: origin.sessionId, lastTurnId: origin.turnId });
+      const settings = await codexDeliverySettings(rpc, origin);
+      const result = await rpc.request("thread/fork", { threadId: origin.sessionId, lastTurnId: origin.turnId, ...settings });
       const child = result?.thread;
       if (typeof child?.id !== "string" || child.id === origin.sessionId || child.forkedFromId !== origin.sessionId) throw new Error("Codex did not confirm a distinct fork of the original session");
+      if (result.model !== settings.model || result.modelProvider !== settings.modelProvider) throw new Error("Codex did not inherit the delivery model/provider");
       return child.id;
     } finally { await rpc.close(); }
   }
   async prompt(sessionId: string, text: string, run: ConversationRun): Promise<string> {
+    if (!run.origin || run.origin.provider !== "codex" || run.origin.sessionId === sessionId) throw new Error("The original Codex delivery is required to resume its child");
     const rpc = new CodexRpc(this.executable, this.args, this.cwd, run.signal);
     let dispose: (() => void) | undefined;
     let mcp: ConversationMcp | undefined;
     try {
       if (run.tools) mcp = await ConversationMcp.start(run.tools, run.signal);
       await rpc.initialize();
+      const settings = await codexDeliverySettings(rpc, run.origin);
       const toolServer = `marginote_artifact_${createHash("sha256").update(sessionId).digest("hex").slice(0, 12)}`;
-      const resumed = await rpc.request("thread/resume", { threadId: sessionId,
-        ...(mcp ? { config: { [`mcp_servers.${toolServer}`]: mcp.config } } : {}) });
+      const resumed = await rpc.request("thread/resume", { threadId: sessionId, ...settings,
+        config: { ...settings.config, ...(mcp ? { [`mcp_servers.${toolServer}`]: mcp.config } : {}) } });
       if (resumed?.thread?.id !== sessionId) throw new Error("Codex resumed a different session");
+      if (resumed.model !== settings.model || resumed.modelProvider !== settings.modelProvider) throw new Error("Codex did not restore the delivery model/provider; no model turn was started");
       if (typeof resumed.model === "string") run.tools?.setModel(resumed.model);
       if (resumed.thread.turns?.some((turn: any) => turn.status === "inProgress")) throw new Error("This artifact session is already running in another client");
       if (mcp && run.tools) {
