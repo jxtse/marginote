@@ -1,16 +1,17 @@
 # Artifact conversations
 
-## Working increment
+## Native conversations (experimental)
 
 A document can own a **native Codex, Claude Code or Hermes child session** forked from an exact
 completed delivery boundary. Subsequent human comments share the child history.
 The original session is not prompted. pi remains the standalone editor's agent and is
 suppressed for bound documents.
 
-Start from a built checkout:
+The integration ships in Marginote 0.2.0. Start with the installed/authenticated originating
+agent available on PATH:
 
 ```sh
-node packages/cli/bin/marginote.js /path/to/project --port 0 --no-discover \
+npx marginote@0.2.0 /path/to/project --port 0 --no-discover \
   --doc report.md --origin-session EXACT_SESSION_ID --origin-turn EXACT_TURN_ID --open
 ```
 
@@ -186,7 +187,7 @@ Explicit native approval requests become one-time browser decisions; other inter
 requests fail closed. Shutdown interrupts only the bridge's own running session and
 does not run the native entry point's profile-wide orphan sweep.
 
-On 2026-09-16 the installed native Hermes CLI, AIAgent and tool system passed an isolated
+On 2026-09-18 the installed Hermes 0.21.3 CLI, AIAgent and tool system passed an isolated
 test against a local fake model: inherited history, real Marginote read/propose tools,
 human acceptance, a second-process follow-up, and a denied native terminal permission.
 The original session's rows and metadata remained unchanged. Run with Hermes's own Python:
@@ -220,8 +221,9 @@ The complete product still needs:
    artifact changes through Marginote; this instruction is not an OS access boundary.
 2. Claude Code and Hermes live-model validation and continued compatibility checks of
    their native interfaces; never silently switch them to Codex or pi.
-3. Automatic delivery lifecycle integration and a portable background launcher. The
-   current link requires explicit session IDs and a browser connection action.
+3. Automatic delivery lifecycle integration for more agents. Hermes has a short launcher
+   that discovers the calling session and waits for delivery. Explicit CLI handoffs for
+   other agents still need exact origin IDs; CLI origin flags already auto-connect.
 4. Broader artifact workflows and UI polish. HTML source editing, isolated preview,
    source-mapped annotations and conversation routing are now implemented; see
    [HTML artifacts](html-artifacts.md) for capabilities and boundaries.

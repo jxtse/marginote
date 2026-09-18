@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.0 — 2026-09-18
+
+First stable Marginote release. The npm package now includes the document workflows and
+native integrations previously available only from the source checkout.
+
+### Documents and review
+
+- Open Markdown, HTML and LaTeX with `--doc` and launch the browser with `--open`.
+- Review HTML through an isolated preview with source-linked annotations; LaTeX PDF
+  preview uses a separately installed compiler and sandbox.
+- Continue discussions with visible reading receipts and Resolve/Reopen controls.
+- Keep AI proposals pending until accepted, including follow-ups after an anchor is removed.
+
+### Native conversations (experimental)
+
+- Continue Codex, Claude Code and Hermes from an exact completed delivery in an independent
+  child conversation, preserving the original session and inheriting its history/model.
+- Connect automatically from CLI origin flags; expose native approval requests for one-time
+  approval or denial and show inherited Hermes model/history details.
+- Ship the Hermes plugin and `hermes marginote report.md` launcher, which discovers the
+  calling session and waits for its completed delivery. No separate Hermes MCP setup is needed.
+- Fix Hermes scoped artifact-tool registration and approval handling for the installed
+  v0.21.3 runtime; preserve failed test profiles while native processes shut down.
+- Pin Codex continuation to the delivery's recorded model/provider/reasoning effort.
+
+### Packaging and reliability
+
+- Include both getting-started READMEs, integration plugins and supporting documentation
+  in the standalone npm package.
+- Cover installed native runtimes with isolated end-to-end tests using local model fixtures.
+  These tests verify protocol behavior, not every external model or provider.
+- Fix Windows timed-out code-block process cleanup; retain Linux/macOS/Windows, three-browser,
+  Docker and installed-tarball CI coverage.
+
+Native integrations depend on installed agent APIs and remain experimental. Agent upgrades
+require compatibility checks. Native filesystem tools retain the agent's existing permissions;
+Marginote's pending-edit controls apply to changes proposed through its own tools.
+
 ## 0.2.0-beta.1 — Marginote
 
 - Added the embedded comment agent and source↔preview navigation layer.

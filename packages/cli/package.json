@@ -1,6 +1,6 @@
 {
   "name": "marginote",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.0",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "bin": {
@@ -17,6 +17,7 @@
     "plugins/",
     "README.md",
     "README.zh-CN.md",
+    "CHANGELOG.md",
     "LICENSE",
     "SECURITY.md"
   ],

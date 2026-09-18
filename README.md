@@ -20,69 +20,47 @@ You need **Node.js 22 or newer**, including npm. Run `node --version` in Termina
 (macOS/Linux) or PowerShell (Windows) to check. The commands below go in that terminal,
 not in your browser's address bar.
 
-**Choose one starting point:**
-
-| What you want | Use |
-| --- | --- |
-| Try Markdown editing, comments and the built-in AI | The npm demo below |
-| Use HTML, LaTeX, or continue a Codex/Claude Code/Hermes conversation | Build the current source below |
-
-**Version note:** checked on 2026-09-16, npm's `latest` is `0.2.0-beta.1`, an older
-Markdown release. This checkout uses the same version string but contains newer features.
-The published CLI does **not** include `--doc`, `--open`, or `--origin-*`. Use the source
-build for those instructions; `npx marginote@latest` does not run your local checkout.
+**Version 0.2.0** includes Markdown, HTML and LaTeX support, plus optional native
+Codex, Claude Code and Hermes conversation integrations. No source build is needed.
+Native integrations remain experimental; see their requirements in step 4.
 
 ### Try the npm demo
 
 ```bash
-npx marginote@latest --demo
+npx marginote@0.2.0 --demo --open
 ```
 
-If npm asks to install the package, confirm. Keep the terminal running and open the
-`local` URL it prints, normally **http://127.0.0.1:4321/**, in your browser.
+If npm asks to install the package, confirm. Keep the terminal running. The browser opens
+automatically; if it does not, open the printed `local` URL, normally **http://127.0.0.1:4321/**.
 You should see a file list including `welcome.md`. Click it, then follow step 2 below.
 
 The demo is temporary: **its files, comments and settings are deleted when you stop it**.
 For documents you want to keep, press `Ctrl+C`, then run:
 
 ```bash
-npx marginote@latest
+npx marginote@0.2.0 --open
 ```
 
 This opens `~/Documents/Marginote`, creating a welcome document if that folder does not
-already exist. Or open your own existing folder with `npx marginote@latest "/path/to/notes"`
+already exist. Or open your own existing folder with `npx marginote@0.2.0 "/path/to/notes" --open`
 (replace the path; on Windows use a path such as `"C:\Users\YourName\Documents\notes"`).
 
-### Build the current source
-
-You also need Git. In a directory where you keep projects, run:
-
-```bash
-git clone https://github.com/jxtse/marginote.git
-cd marginote
-npm ci
-npm run build
-node packages/cli/bin/marginote.js --demo --open
-```
-
-The last command opens a disposable demo in your browser. If the browser does not open,
-use the terminal's `local` URL. After trying it, stop with `Ctrl+C`. To open a persistent
-workspace using this build, run from the same `marginote` checkout:
-
-```bash
-node packages/cli/bin/marginote.js --open
-```
+### Open your own document
 
 To open a particular file, keep it in an existing folder and pass its path relative to
 that folder. For example, if `/path/to/notes/report.md` exists:
 
 ```bash
-node packages/cli/bin/marginote.js "/path/to/notes" --doc report.md --open
+npx marginote@0.2.0 "/path/to/notes" --doc report.md --open
 ```
 
 Replace `/path/to/notes` with your actual folder. The same command accepts an HTML or TeX
 file in place of `report.md`. LaTeX PDF preview requires the additional
 [compiler and sandbox setup](docs/latex-and-images.md); basic Markdown does not.
+
+For frequent use, install once with `npm install -g marginote@0.2.0`, then use
+`marginote` in place of `npx marginote@0.2.0`. Run `marginote --version` to check the
+installed version, or `npx marginote@0.2.0 --help` for all options.
 
 ## 2. Try one comment
 
@@ -123,12 +101,14 @@ The AI replies in that comment thread. If it proposes an edit, inspect its sugge
 card and click **Accept** or **Reject**. A reply alone is not a saved edit. Ask follow-up
 questions with **Reply**. For a review of the whole document, click **Grill me**.
 
-Settings configure a separate built-in collaborator. They do not attach a previous
+These settings configure a separate built-in collaborator. They do not attach a previous
 Codex, Claude Code or Hermes chat. Use the next section when that history matters.
+For a document already connected to a native conversation, Settings shows its native
+configuration instead; the standalone model fields do not control that conversation.
 
 ## 4. Continue the conversation that produced a document
 
-This is an optional **source-build preview**, not required for the workflow above.
+This is an optional **experimental integration included in 0.2.0**.
 The originating agent must be installed and authenticated on the machine running
 Marginote. It uses that agent's existing configuration, rather than the Settings model.
 
@@ -146,14 +126,16 @@ normally; its original conversation is not connected. Hermes additionally needs 
 
 With that Hermes plugin, the agent can simply run `hermes marginote report.md` in a
 background terminal. It infers the current session, waits for its delivery to finish,
-and connects automatically. If Marginote is not on PATH, configure the existing CLI once
-with `hermes marginote --setup /path/to/marginote/packages/cli/bin/marginote.js`.
+and connects automatically. Install Marginote persistently with
+`npm install -g marginote@0.2.0`, then follow the plugin's one-time installation instructions.
+The launcher finds `marginote` on PATH; custom installations can use
+`hermes marginote --setup /absolute/path/to/marginote`.
 No separate MCP setup is needed. Never create a new chat just to obtain session IDs.
 
-From the built checkout, substitute your real folder, file and IDs:
+For an explicit handoff, substitute your real folder, file and IDs:
 
 ```bash
-node packages/cli/bin/marginote.js "/path/to/project" --doc report.md --port 0 --open --origin-provider codex --origin-session EXACT_SESSION_ID --origin-turn EXACT_COMPLETED_TURN_ID
+npx marginote@0.2.0 "/path/to/project" --doc report.md --port 0 --open --origin-provider codex --origin-session EXACT_SESSION_ID --origin-turn EXACT_COMPLETED_TURN_ID
 ```
 
 1. Open the printed review link. CLI origin flags connect automatically; `--no-connect`
@@ -173,8 +155,10 @@ for connected documents. Opening a review link or connecting alone does not star
 turn. One server owns each folder: if it is already open, reuse that server and its
 `review_document` MCP tool rather than starting a second copy.
 
-Codex has a verified live-model workflow. Claude Code and Hermes have native integration
-checks, but their external-model continuation remains unverified. Suggestions sent through
+Local native end-to-end checks passed with Codex **0.151.0**, Claude Code **2.1.243**
+(SDK **0.3.272**) and Hermes **0.21.3**, using simulated model responses. Codex also has
+a live-model workflow check. These results do not certify every provider or future agent
+version; rerun the native checks after upgrading an agent. Suggestions sent through
 Marginote require acceptance; other native filesystem tools retain the originating agent's
 permissions. See [conversation setup and limitations](docs/artifact-conversations.md)
 and the [agent launcher skill](plugins/marginote/skills/artifact-review/SKILL.md).
@@ -185,11 +169,11 @@ and the [agent launcher skill](plugins/marginote/skills/artifact-review/SKILL.md
 | --- | --- |
 | `node` or `npx` is not recognized | Install Node.js 22+ with npm, then reopen the terminal. |
 | The browser cannot connect | Keep the launch terminal running and use its exact `local` URL. If port 4321 is busy, add `--port 4322`. |
-| No documents are listed | Put a supported file inside the folder you launched. The npm release handles Markdown; use the source build for HTML/LaTeX. |
+| No documents are listed | Put a `.md`, `.html` or `.tex` file inside the folder you launched. `--doc` is relative to that folder. |
 | **Comment** is disabled | Select text in the source editor first. |
 | Comments receive no AI reply | For the built-in AI, test Settings, then post a new comment. For an attached agent, check its **Ready**, approval or error status. |
 | No **Connect conversation** button | CLI handoffs connect automatically; look for **Ready** or **Connecting**. Manual links need the document and exact origin IDs. Ordinary editor links do not attach a chat. |
-| `Web client not found` | Run `npm ci` and `npm run build` in the cloned repository. |
+| `Web client not found` | Source checkouts need `npm ci` and `npm run build`. The npm package includes the web client; check that you launched the intended installation. |
 | The folder is already owned by another runtime | Reuse its URL or stop that server with `Ctrl+C`. After a crash, allow up to two minutes for ownership to expire. |
 | HTML assets or a PDF preview are missing | See [HTML boundaries](docs/html-artifacts.md) or [LaTeX prerequisites](docs/latex-and-images.md). |
 
@@ -206,10 +190,19 @@ Stop the server with `Ctrl+C`; persistent workspace files remain, while demo fil
 
 ## Development and Docker
 
-From a cloned, installed checkout:
+To work on the source, install Git and run:
 
 ```bash
+git clone https://github.com/jxtse/marginote.git
+cd marginote
+npm ci
 npm run verify
+node packages/cli/bin/marginote.js --demo --open
+```
+
+Stop the demo with `Ctrl+C`. To run browser tests:
+
+```bash
 npx playwright install
 npm run test:e2e
 ```
@@ -230,7 +223,7 @@ docker run --rm --user "$(id -u):$(id -g)" -p 127.0.0.1:4321:4321 -v "$PWD/notes
 
 Open **http://127.0.0.1:4321/**. Linux mounts retain host ownership: the container's UID/GID
 must be able to write the folder and `.marginote`. This image does not bundle your native
-Codex/Claude/Hermes installations or the LaTeX toolchain; use a host source build for
+Codex/Claude/Hermes installations or the LaTeX toolchain; use a host installation for
 those workflows. The commands publish the service only on local loopback.
 
 ## Acknowledgements and license

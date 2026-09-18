@@ -1,15 +1,23 @@
 # Marginote Hermes integration
 
-This development plugin implements native delivery snapshots and browser conversation
+This experimental plugin, included in Marginote 0.2.0, implements native delivery snapshots and browser conversation
 continuation, including scoped artifact tools and one-time native permission decisions.
 The Codex/Claude launcher skill is in the sibling `marginote` directory.
 
 ## Local setup
 
+Install a persistent CLI with `npm install -g marginote@0.2.0`. Run `npm root -g` to
+locate the installed packages; this plugin is the `marginote/plugins/marginote-hermes`
+directory under that path. Copy the whole plugin directory, not just `__init__.py`.
+For a source installation, use `plugins/marginote-hermes` in the checkout instead.
+
 Place this entire directory at `plugins/marginote-hermes` under the **originating Hermes
 profile's home**, then run `hermes plugins list` and `hermes plugins enable marginote-hermes`
 in that profile. Keep any existing installation until you have reviewed an update. The
 checks use disposable profiles; updating this checkout does not update an installed plugin.
+The default profile home is `~/.hermes`; named/custom profiles must use their own home.
+Installing a newer npm package does not replace a previously copied Hermes plugin;
+update that copy separately, preserving any local changes.
 
 Inside the originating Hermes conversation, ask the agent to run this in a background terminal:
 

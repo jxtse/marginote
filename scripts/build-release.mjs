@@ -70,13 +70,14 @@ await mkdir(join(out, "docs"), { recursive: true });
 await cp(join(root, "docs/latex-and-images.md"), join(out, "docs/latex-and-images.md"));
 await cp(join(root, "docs/artifact-conversations.md"), join(out, "docs/artifact-conversations.md"));
 await cp(join(root, "docs/html-artifacts.md"), join(out, "docs/html-artifacts.md"));
+await cp(join(root, "docs/product-screenshot.png"), join(out, "docs/product-screenshot.png"));
 await cp(join(root, "plugins"), join(out, "plugins"), {
   recursive: true,
   filter: path => !path.split(/[\\/]/).includes("__pycache__") && !path.endsWith(".pyc"),
 });
 await mkdir(join(out, "registry"), { recursive: true });
 await cp(join(root, "registry/index.json"), join(out, "registry/index.json"));
-for (const file of ["README.md", "README.zh-CN.md", "LICENSE", "SECURITY.md"]) {
+for (const file of ["README.md", "README.zh-CN.md", "CHANGELOG.md", "LICENSE", "SECURITY.md"]) {
   await cp(join(root, file), join(out, file));
 }
 

@@ -10,7 +10,7 @@ COPY registry ./registry
 COPY scripts ./scripts
 COPY docs ./docs
 COPY plugins ./plugins
-COPY README.md README.zh-CN.md LICENSE SECURITY.md ./
+COPY README.md README.zh-CN.md CHANGELOG.md LICENSE SECURITY.md ./
 RUN npm ci && npm run build:release && node scripts/check-release.mjs
 
 FROM node:24-alpine AS runtime

@@ -22,6 +22,7 @@ packages/cli/docs/
 packages/cli/plugins/
 packages/cli/README.md
 packages/cli/README.zh-CN.md
+packages/cli/CHANGELOG.md
 packages/cli/LICENSE
 packages/cli/SECURITY.md
 packages/cli/.npmignore
