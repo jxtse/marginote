@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 
 /**
  * Running a fenced code block, and capturing what it printed back into the document.
@@ -97,6 +97,8 @@ export async function runBlock(
     let stderr = "";
     let truncated = false;
     let settled = false;
+    let timeoutNote: string | undefined;
+    let treeStopped: Promise<void> = Promise.resolve();
 
     const collect = (chunk: Buffer, into: "out" | "err"): void => {
       const text = chunk.toString("utf8");
@@ -127,16 +129,26 @@ export async function runBlock(
     };
 
     const timer = setTimeout(() => {
-      try {
-        process.kill(-child.pid!, "SIGKILL");
-      } catch {
-        child.kill("SIGKILL");
+      timeoutNote = `\n[marginote] killed after ${timeoutMs}ms`;
+      if (process.platform === "win32" && child.pid) {
+        // Windows has no POSIX process groups. Stop descendants while their
+        // parent still exists, then wait for taskkill and the child's close.
+        treeStopped = new Promise(resolve => {
+          execFile("taskkill", ["/PID", String(child.pid), "/T", "/F"], { timeout: 10_000 }, error => {
+            if (error) child.kill("SIGKILL");
+            resolve();
+          });
+        });
+      } else {
+        try { process.kill(-child.pid!, "SIGKILL"); }
+        catch { child.kill("SIGKILL"); }
       }
-      finish(null, `\n[marginote] killed after ${timeoutMs}ms`);
+      // Sending a signal is not completion: resolving here races vault cleanup
+      // against processes that still hold its files or working directory open.
     }, timeoutMs);
 
     child.on("error", (error) => finish(null, `\n[marginote] ${error.message}`));
-    child.on("close", (code) => finish(code));
+    child.on("close", (code) => { void treeStopped.then(() => finish(timeoutNote ? null : code, timeoutNote)); });
   });
 }
 
